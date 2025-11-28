@@ -1,0 +1,33 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
+use Laravel\Fortify\Features;
+
+Route::get('/', function () {
+    if (auth()->check()) {
+        return redirect()->route('dashboard');
+    }
+    return Inertia::render('welcome');
+})->name('home');
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/dashboard', [App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
+    
+    // User Management (Super Admin & Admin only)
+    Route::resource('users', App\Http\Controllers\UserController::class);
+    
+    // Project Management (Super Admin & Admin only)
+    Route::resource('projects', App\Http\Controllers\ProjectController::class)->except(['edit', 'update']);
+    Route::get('/projects/view/{uuid}', [App\Http\Controllers\ProjectController::class, 'showByUuid'])->name('projects.view');
+    Route::get('/projects/{uuid}/edit', [App\Http\Controllers\ProjectController::class, 'editByUuid'])->name('projects.edit.uuid');
+    Route::patch('/projects/{uuid}/update', [App\Http\Controllers\ProjectController::class, 'updateByUuid'])->name('projects.update.uuid');
+    
+    // Report routes
+    Route::get('/reports/create', [App\Http\Controllers\ReportViewController::class, 'create'])->name('reports.create');
+    Route::get('/reports/{report}', [App\Http\Controllers\ReportViewController::class, 'show'])->name('reports.show');
+    // Route::get('/reports/{report}/history', [App\Http\Controllers\ReportViewController::class, 'history'])->name('reports.history'); // Removed - activity timeline is now shown inline
+});
+
+require __DIR__.'/settings.php';
+require __DIR__.'/auth.php';
