@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\HealthController;
 use Illuminate\Http\Request;
@@ -19,6 +20,10 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::apiResource('reports', ReportController::class);
+
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     
     Route::get('/developers', function () {
         return \App\Models\User::where('role', 'admin')
@@ -27,9 +32,8 @@ Route::middleware('auth')->group(function () {
     });
     
     Route::get('/projects', function () {
-        return \App\Models\Report::select('project')
-            ->distinct()
-            ->orderBy('project')
-            ->pluck('project');
+        return \App\Models\Project::whereHas('reports')
+            ->orderBy('name')
+            ->pluck('name');
     });
 });

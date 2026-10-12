@@ -13,15 +13,15 @@ import {
 import { dashboard } from '@/routes';
 import { type NavItem, type SharedData, type User } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { LayoutGrid, Users, FolderKanban } from 'lucide-react';
+import { FileText, Users, FolderKanban, ScrollText } from 'lucide-react';
 import AppLogo from './app-logo';
 
 // Base navigation items available to all users
 const baseNavItems: NavItem[] = [
     {
-        title: 'Dashboard',
+        title: 'Reports',
         href: dashboard(),
-        icon: LayoutGrid,
+        icon: FileText,
     },
 ];
 
@@ -36,6 +36,11 @@ const adminNavItems: NavItem[] = [
         title: 'Projects',
         href: '/projects',
         icon: FolderKanban,
+    },
+    {
+        title: 'Audit Log',
+        href: '/audit-logs',
+        icon: ScrollText,
     },
 ];
 
@@ -70,7 +75,7 @@ export function AppSidebar() {
                 <div className="flex-1 min-h-8" />
             </SidebarContent>
 
-            <SidebarFooter className="border-t border-gray-200 pt-4 pb-2">
+            <SidebarFooter className="border-t border-sidebar-border pt-4 pb-2">
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

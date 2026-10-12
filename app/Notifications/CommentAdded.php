@@ -5,14 +5,11 @@ namespace App\Notifications;
 use App\Models\Report;
 use App\Models\ReportComment;
 use App\Models\User;
-use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
+use Illuminate\Support\Str;
 
-class CommentAdded extends Notification
+class CommentAdded extends AppNotification
 {
-    use Queueable;
-
     /**
      * Create a new notification instance.
      */
@@ -25,32 +22,25 @@ class CommentAdded extends Notification
     }
 
     /**
-     * Get the notification's delivery channels.
-     *
-     * @return array<int, string>
-     */
-    public function via(object $notifiable): array
-    {
-        return ['mail'];
-    }
-
-    /**
      * Get the mail representation of the notification.
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $commenterRole = $this->commentedBy->isAdmin() ? ucfirst($this->commentedBy->role) : 'Client';
-        
-        return (new MailMessage)
-            ->subject('New Comment Added: ' . $this->report->title)
-            ->greeting('Hello ' . $notifiable->name . '!')
-            ->line('A new comment has been added to a report by ' . $commenterRole . ' ' . $this->commentedBy->name . '.')
-            ->line('**Report:** ' . $this->report->title)
-            ->line('**Project:** ' . ($this->report->project->name ?? 'Unknown Project'))
-            ->line('**Comment by:** ' . $this->commentedBy->name . ' (' . ucfirst($this->commentedBy->role) . ')')
-            ->line('**Comment:** ' . $this->comment->comment)
-            ->action('View Report', url('/reports/' . $this->report->uuid))
-            ->line('Thank you for using Client Issue & Requirements Tracking System!');
+        return $this->buildMail(
+            $notifiable,
+            'New Comment: ' . $this->report->title,
+            'New comment on a report',
+            $this->commentedBy->name . ' added a comment.',
+            [
+                'Report' => $this->report->title,
+                'Project' => $this->report->project->name ?? 'Unknown Project',
+                'Comment by' => $this->nameWithRole($this->commentedBy),
+            ],
+            'View Report',
+            '/reports/' . $this->report->uuid,
+            $this->comment->comment,
+            'Comment'
+        );
     }
 
     /**
@@ -61,9 +51,12 @@ class CommentAdded extends Notification
     public function toArray(object $notifiable): array
     {
         return [
+            'title' => 'New comment: ' . $this->report->title,
+            'message' => $this->commentedBy->name . ': ' . Str::limit($this->comment->comment, 120),
+            'url' => '/reports/' . $this->report->uuid,
             'report_id' => $this->report->id,
             'report_title' => $this->report->title,
-            'project_name' => $this->report->project->name,
+            'project_name' => $this->report->project?->name,
             'commented_by' => $this->commentedBy->name,
             'commented_by_role' => $this->commentedBy->role,
             'comment' => $this->comment->comment,

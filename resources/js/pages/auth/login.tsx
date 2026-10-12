@@ -37,7 +37,7 @@ export default function Login({
                     <>
                         <div className="grid gap-6">
                             <div className="grid gap-2">
-                                <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">Email address</Label>
+                                <Label htmlFor="email" className="text-sm font-medium">Email address</Label>
                                 <Input
                                     id="email"
                                     type="email"
@@ -47,18 +47,18 @@ export default function Login({
                                     tabIndex={1}
                                     autoComplete="email"
                                     placeholder="email@example.com"
-                                    className="h-11 border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-blue-500 transition-colors"
+                                    className="h-11"
                                 />
                                 <InputError message={errors.email} />
                             </div>
 
                             <div className="grid gap-2">
                                 <div className="flex items-center">
-                                    <Label htmlFor="password" className="text-sm font-medium text-gray-700 dark:text-gray-300">Password</Label>
+                                    <Label htmlFor="password" className="text-sm font-medium">Password</Label>
                                     {canResetPassword && (
                                         <TextLink
                                             href={request()}
-                                            className="ml-auto text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                                            className="ml-auto text-sm text-brand-gold-dark hover:text-brand-ink dark:text-brand-gold dark:hover:text-white"
                                             tabIndex={5}
                                         >
                                             Forgot password?
@@ -73,7 +73,7 @@ export default function Login({
                                     tabIndex={2}
                                     autoComplete="current-password"
                                     placeholder="Password"
-                                    className="h-11 border-gray-300 dark:border-gray-600 focus:border-blue-500 focus:ring-blue-500 transition-colors"
+                                    className="h-11"
                                 />
                                 <InputError message={errors.password} />
                             </div>
@@ -89,13 +89,12 @@ export default function Login({
 
                             <Button
                                 type="submit"
-                                className="mt-4 w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02] relative overflow-hidden group"
+                                className="mt-4 h-11 w-full font-semibold transition hover:-translate-y-0.5 hover:shadow-[0_9px_24px_#81725436]"
                                 tabIndex={4}
                                 disabled={processing}
                                 data-test="login-button"
                             >
-                                <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/25 to-white/0 -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></span>
-                                <span className="relative flex items-center justify-center gap-2">
+                                <span className="flex items-center justify-center gap-2">
                                     {processing && <Spinner />}
                                     Log in
                                 </span>

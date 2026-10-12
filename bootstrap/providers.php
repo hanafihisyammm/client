@@ -3,5 +3,5 @@
 return [
     App\Providers\AppServiceProvider::class,
     App\Providers\AuthServiceProvider::class,
-    App\Providers\EmailItServiceProvider::class,
+    App\Providers\FortifyServiceProvider::class,
 ];

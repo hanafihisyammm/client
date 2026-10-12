@@ -4,14 +4,11 @@ namespace App\Notifications;
 
 use App\Models\Report;
 use App\Models\User;
-use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
+use Illuminate\Support\Str;
 
-class ReportStatusChanged extends Notification
+class ReportStatusChanged extends AppNotification
 {
-    use Queueable;
-
     /**
      * Create a new notification instance.
      */
@@ -19,19 +16,10 @@ class ReportStatusChanged extends Notification
         public Report $report,
         public User $updatedBy,
         public string $oldStatus,
-        public string $newStatus
+        public string $newStatus,
+        public ?string $reason = null
     ) {
         //
-    }
-
-    /**
-     * Get the notification's delivery channels.
-     *
-     * @return array<int, string>
-     */
-    public function via(object $notifiable): array
-    {
-        return ['mail'];
     }
 
     /**
@@ -39,21 +27,22 @@ class ReportStatusChanged extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $updaterRole = $this->updatedBy->isAdmin() ? ucfirst($this->updatedBy->role) : 'Client';
-        
-        return (new MailMessage)
-            ->subject('Report Status Updated: ' . $this->report->title)
-            ->greeting('Hello ' . $notifiable->name . '!')
-            ->line('A report status has been updated by ' . $updaterRole . ' ' . $this->updatedBy->name . '.')
-            ->line('**Report:** ' . $this->report->title)
-            ->line('**Project:** ' . ($this->report->project->name ?? 'Unknown Project'))
-            ->line('**Updated by:** ' . $this->updatedBy->name . ' (' . ucfirst($this->updatedBy->role) . ')')
-            ->line('**Status changed from:** ' . $this->formatStatus($this->oldStatus) . ' → ' . $this->formatStatus($this->newStatus))
-            ->when($this->newStatus === 'ready_for_client_confirmation' && $this->report->resolution_summary, function ($message) {
-                return $message->line('**Resolution Summary:** ' . $this->report->resolution_summary);
-            })
-            ->action('View Report', url('/reports/' . $this->report->uuid))
-            ->line('Thank you for using Client Issue & Requirements Tracking System!');
+        return $this->buildMail(
+            $notifiable,
+            'Report ' . $this->formatStatus($this->newStatus) . ': ' . $this->report->title,
+            'Report status updated',
+            $this->updatedBy->name . ' changed the status of a report.',
+            [
+                'Report' => $this->report->title,
+                'Project' => $this->report->project->name ?? 'Unknown Project',
+                'Status' => $this->formatStatus($this->oldStatus) . ' → ' . $this->formatStatus($this->newStatus),
+                'Updated by' => $this->nameWithRole($this->updatedBy),
+            ],
+            'View Report',
+            '/reports/' . $this->report->uuid,
+            $this->reason,
+            'Reason'
+        );
     }
 
     /**
@@ -72,13 +61,18 @@ class ReportStatusChanged extends Notification
     public function toArray(object $notifiable): array
     {
         return [
+            'title' => 'Report ' . strtolower($this->formatStatus($this->newStatus)) . ': ' . $this->report->title,
+            'message' => $this->updatedBy->name . ' changed the status from ' . $this->formatStatus($this->oldStatus) . ' to ' . $this->formatStatus($this->newStatus) . '.'
+                . ($this->reason ? ' Reason: ' . Str::limit($this->reason, 120) : ''),
+            'url' => '/reports/' . $this->report->uuid,
             'report_id' => $this->report->id,
             'report_title' => $this->report->title,
-            'project_name' => $this->report->project->name,
+            'project_name' => $this->report->project?->name,
             'updated_by' => $this->updatedBy->name,
             'updated_by_role' => $this->updatedBy->role,
             'old_status' => $this->oldStatus,
             'new_status' => $this->newStatus,
+            'reason' => $this->reason,
         ];
     }
 }

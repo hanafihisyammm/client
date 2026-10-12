@@ -1,53 +1,43 @@
 import { dashboard, login } from '@/routes';
 import { type SharedData } from '@/types';
 import { Head, Link, usePage } from '@inertiajs/react';
-import { 
-    ClipboardCheck,
-    ArrowRight,
-    Sparkles
-} from 'lucide-react';
+import SidraMark from '@/components/sidra-mark';
+import { ArrowRight } from 'lucide-react';
+
+const goldButton =
+    'inline-flex items-center justify-center rounded-lg bg-brand-gold font-semibold text-brand-ink transition hover:-translate-y-0.5 hover:shadow-[0_9px_24px_#81725436] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold focus-visible:ring-offset-2 focus-visible:ring-offset-background';
 
 export default function Welcome() {
     const { auth } = usePage<SharedData>().props;
 
     return (
         <>
-            <Head title="Welcome to Client Issue Tracking">
+            <Head title="Welcome to Sidra Desk">
                 <meta name="description" content="Streamline your client communications with our comprehensive issue and requirements tracking system." />
             </Head>
             
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex flex-col">
+            <div className="flex min-h-screen flex-col bg-background text-foreground">
                 {/* Header */}
-                <header className="relative z-10">
+                <header className="relative z-10 border-b border-border">
                     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                         <div className="flex h-16 items-center justify-between">
                             <div className="flex items-center space-x-3">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
-                                    <ClipboardCheck className="h-5 w-5 text-white" />
-                                </div>
-                                <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-                                    Sidra Core Sdn Bhd
-                                </h1>
+                                <SidraMark className="h-9 w-9" />
+                                <span className="font-[family-name:var(--font-heading)] text-lg font-extrabold tracking-tight">
+                                    Sidra Desk
+                                </span>
                             </div>
                             
                             <nav className="flex items-center space-x-4">
                                 {auth.user ? (
-                                    <Link
-                                        href={dashboard()}
-                                        className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                                    >
-                                        Go to Dashboard
+                                    <Link href={dashboard()} className={`${goldButton} px-4 py-2.5 text-sm`}>
+                                        Go to Reports
                                         <ArrowRight className="ml-2 h-4 w-4" />
                                     </Link>
                                 ) : (
-                                    <div className="flex items-center space-x-3">
-                                        <Link
-                                            href={login()}
-                                            className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
-                                        >
-                                            Sign In
-                                        </Link>
-                                    </div>
+                                    <Link href={login()} className={`${goldButton} px-4 py-2.5 text-sm`}>
+                                        Sign In
+                                    </Link>
                                 )}
                             </nav>
                         </div>
@@ -55,38 +45,34 @@ export default function Welcome() {
                 </header>
 
                 {/* Hero Section */}
-                <main className="relative flex-1 flex items-center justify-center">
-                    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20">
+                <main className="relative flex flex-1 items-center justify-center">
+                    <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
                         <div className="text-center">
                             {/* Badge */}
-                            <div className="mb-8 inline-flex items-center rounded-full bg-white/80 backdrop-blur-sm px-6 py-2 text-sm font-medium text-blue-800 shadow-lg border border-blue-200/50 dark:bg-blue-900/20 dark:text-blue-300">
-                                <Sparkles className="mr-2 h-4 w-4" />
+                            <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-[10px] font-bold uppercase tracking-[1.35px] text-brand-gold-dark dark:text-[#e0c98a]">
+                                <span className="h-1.5 w-1.5 rounded-full bg-brand-gold" />
                                 Professional Issue Tracking Platform
                             </div>
                             
-                            <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl md:text-6xl dark:text-white mb-6">
+                            <h1 className="mb-6 text-4xl font-extrabold tracking-[-0.04em] sm:text-5xl md:text-6xl">
                                 <span className="block">Client Issue &</span>
-                                <span className="block bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                                <span className="block text-brand-gold-dark dark:text-brand-gold">
                                     Requirements Tracking
                                 </span>
                             </h1>
-                            <p className="mx-auto mt-6 max-w-3xl text-lg text-gray-600 dark:text-gray-300 leading-relaxed">
+                            <p className="mx-auto mt-6 max-w-3xl text-lg leading-relaxed text-muted-foreground">
                                 Streamline your client communications with our comprehensive tracking system. 
                                 Replace inefficient PowerPoint and Excel workflows with real-time collaboration, 
                                 file attachments, and automated status updates.
                             </p>
                             
                             {!auth.user && (
-                                <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center items-center">
-                                    <Link
-                                        href={login()}
-                                        className="group inline-flex items-center rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-4 text-base font-medium text-white shadow-xl hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transform transition-all duration-200 hover:scale-105 hover:from-blue-700 hover:to-purple-700 relative overflow-hidden"
-                                    >
-                                        <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/25 to-white/0 -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></span>
-                                        <span className="relative">Sign In to Access System</span>
-                                        <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
+                                <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+                                    <Link href={login()} className={`${goldButton} group px-7 py-4 text-base`}>
+                                        Sign In to Access System
+                                        <ArrowRight className="ml-3 h-5 w-5 transition-transform group-hover:translate-x-1" />
                                     </Link>
-                                    <div className="text-sm text-gray-500 dark:text-gray-400 animate-pulse">
+                                    <div className="text-sm text-muted-foreground">
                                         Trusted by businesses worldwide
                                     </div>
                                 </div>

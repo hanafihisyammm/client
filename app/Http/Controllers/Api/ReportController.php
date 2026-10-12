@@ -59,6 +59,12 @@ class ReportController extends Controller
             $query->where('assigned_to', $request->assigned_to);
         }
 
+        if ($request->boolean('overdue')) {
+            $query->whereNotNull('due_date')
+                ->whereDate('due_date', '<', now()->toDateString())
+                ->whereNotIn('status', Report::FINISHED_STATUSES);
+        }
+
         if ($request->has('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -184,7 +190,7 @@ class ReportController extends Controller
             'reporter:id,name,email,role',
             'assignee:id,name,email,role',
             'attachments',
-            'activityLogs.user:id,name,email',
+            'activityLogs.user:id,name,email,role',
             'comments.user:id,name,email,role'
         ]);
 
@@ -218,6 +224,8 @@ class ReportController extends Controller
                     'report_id' => $report->id,
                     'user_id' => $user->id,
                     'action' => 'acknowledged',
+                    'old_values' => ['status' => $oldStatus],
+                    'new_values' => ['status' => 'in_progress'],
                 ]);
 
                 // Send notification for status change
@@ -241,6 +249,8 @@ class ReportController extends Controller
                     'report_id' => $report->id,
                     'user_id' => $user->id,
                     'action' => 'submitted_for_review',
+                    'old_values' => ['status' => $oldStatus],
+                    'new_values' => ['status' => 'submit_for_review'],
                 ]);
 
                 // Send notification for status change
@@ -264,6 +274,8 @@ class ReportController extends Controller
                     'report_id' => $report->id,
                     'user_id' => $user->id,
                     'action' => 'returned_to_progress',
+                    'old_values' => ['status' => $oldStatus],
+                    'new_values' => ['status' => 'in_progress'],
                 ]);
 
                 // Send notification for status change
@@ -290,6 +302,8 @@ class ReportController extends Controller
                     'report_id' => $report->id,
                     'user_id' => $user->id,
                     'action' => 'approved',
+                    'old_values' => ['status' => $oldStatus],
+                    'new_values' => ['status' => 'approved'],
                 ]);
 
                 // Send notification for status change
@@ -307,7 +321,7 @@ class ReportController extends Controller
                 }
 
                 $validated = $request->validate([
-                    'comment' => 'required|string|min:5'
+                    'comment' => 'required|string|min:5|max:2000'
                 ]);
 
                 $oldStatus = $report->status;
@@ -317,11 +331,20 @@ class ReportController extends Controller
                     'report_id' => $report->id,
                     'user_id' => $user->id,
                     'action' => 'rejected',
+                    'old_values' => ['status' => $oldStatus],
+                    'new_values' => ['status' => 'rejected', 'reason' => $validated['comment']],
+                ]);
+
+                // Keep the rejection reason in the comment thread
+                ReportComment::create([
+                    'report_id' => $report->id,
+                    'user_id' => $user->id,
+                    'comment' => $validated['comment'],
                 ]);
 
                 // Send notification for status change
                 $report->load('project');
-                app(NotificationService::class)->notifyReportStatusChanged($report, $user, $oldStatus, 'rejected');
+                app(NotificationService::class)->notifyReportStatusChanged($report, $user, $oldStatus, 'rejected', $validated['comment']);
                 break;
 
             case 'update_report':
@@ -394,10 +417,25 @@ class ReportController extends Controller
                     'new_values' => $newValues,
                 ]);
 
-                // Send notification if status changed
-                if ($statusChanged) {
-                    $report->load('project');
+                // Work out which details actually changed
+                $changes = [];
+                foreach ($newValues as $field => $newValue) {
+                    $oldValue = $oldValues[$field];
+                    if ($field === 'due_date') {
+                        $oldValue = $oldValue?->toDateString();
+                        $newValue = $newValue ? \Illuminate\Support\Carbon::parse($newValue)->toDateString() : null;
+                    }
+                    if ($oldValue !== $newValue) {
+                        $changes[$field] = ['old' => $oldValue, 'new' => $newValue];
+                    }
+                }
+
+                // Send one notification: a status change on its own, otherwise the list of edits
+                $report->load('project');
+                if ($statusChanged && count($changes) === 1) {
                     app(NotificationService::class)->notifyReportStatusChanged($report, $user, $oldStatus, $newStatus);
+                } elseif (!empty($changes)) {
+                    app(NotificationService::class)->notifyReportUpdated($report, $user, $changes);
                 }
                 break;
 
@@ -423,6 +461,8 @@ class ReportController extends Controller
                     'report_id' => $report->id,
                     'user_id' => $user->id,
                     'action' => 'closed',
+                    'old_values' => ['status' => $oldStatus],
+                    'new_values' => ['status' => 'closed'],
                 ]);
 
                 // Send notification for status change
@@ -462,7 +502,7 @@ class ReportController extends Controller
                 'reporter:id,name,email,role',
                 'assignee:id,name,email,role',
                 'attachments',
-                'activityLogs.user:id,name,email',
+                'activityLogs.user:id,name,email,role',
                 'comments.user:id,name,email,role'
             ])
         ]);
@@ -479,6 +519,8 @@ class ReportController extends Controller
         foreach ($report->attachments as $attachment) {
             Storage::disk('public')->delete($attachment->storage_path);
         }
+
+        app(NotificationService::class)->notifyReportDeleted($report, $user);
 
         $report->delete();
 

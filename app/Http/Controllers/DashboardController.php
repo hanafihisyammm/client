@@ -29,6 +29,9 @@ class DashboardController extends Controller
         }
         // Admin and super_admin can see all reports (no additional filtering)
 
+        // KPI counts cover every report the user can see, regardless of the filters below
+        $stats = $this->stats(clone $query);
+
         // Apply search and filters
         if ($request->has('search') && $request->search) {
             $search = $request->search;
@@ -74,6 +77,7 @@ class DashboardController extends Controller
             'projects' => $projects,
             'userRole' => $user->role,
             'userId' => $user->id,
+            'stats' => $stats,
             'filters' => [
                 'search' => $request->search ?? '',
                 'status' => $request->status ?? 'all',
@@ -81,5 +85,34 @@ class DashboardController extends Controller
                 'project' => $request->project ?? 'all',
             ],
         ]);
+    }
+
+    /**
+     * Count the reports that need attention, by where they are in the workflow.
+     *
+     * @return array<string, int>
+     */
+    private function stats($query): array
+    {
+        $byStatus = (clone $query)
+            ->reorder()
+            ->setEagerLoads([])
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $overdue = (clone $query)
+            ->whereNotNull('due_date')
+            ->whereDate('due_date', '<', now()->toDateString())
+            ->whereNotIn('status', Report::FINISHED_STATUSES)
+            ->count();
+
+        return [
+            'pending' => (int) ($byStatus['pending'] ?? 0),
+            'in_progress' => (int) ($byStatus['in_progress'] ?? 0),
+            'submit_for_review' => (int) ($byStatus['submit_for_review'] ?? 0),
+            'rejected' => (int) ($byStatus['rejected'] ?? 0),
+            'overdue' => $overdue,
+        ];
     }
 }

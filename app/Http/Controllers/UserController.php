@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
@@ -94,6 +95,8 @@ class UserController extends Controller
                 'created_by' => auth()->id(),
                 'email_verified_at' => now(),
             ]);
+
+            app(NotificationService::class)->notifyAccountCreated($newUser, $currentUser);
 
             return redirect()->route('users.index')
                 ->with('flash', [

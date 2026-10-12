@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -210,10 +210,15 @@ export default function ProjectShow({ project }: Props) {
                                                     </TableHeader>
                                                     <TableBody>
                                                         {project.reports.map((report) => (
-                                                            <TableRow key={report.id} className="hover:bg-gray-50">
+                                                            <TableRow
+                                                                key={report.id}
+                                                                className="cursor-pointer hover:bg-gray-50"
+                                                                onClick={() => router.get(`/reports/${report.uuid}`)}
+                                                            >
                                                                 <TableCell className="font-medium">
                                                                     <Link 
                                                                         href={`/reports/${report.uuid}`}
+                                                                        onClick={(e) => e.stopPropagation()}
                                                                         className="text-blue-600 hover:text-blue-800 hover:underline"
                                                                     >
                                                                         {report.title}

@@ -40,7 +40,9 @@ interface Report {
     id: number
     action: string
     comment?: string
-    user: { id: number; name: string; email: string }
+    old_values?: Record<string, unknown> | null
+    new_values?: Record<string, unknown> | null
+    user: { id: number; name: string; email: string; role?: string }
     created_at: string
   }>
   resolution_summary?: string
@@ -58,8 +60,92 @@ interface ActivityLog {
   id: number
   action: string
   comment?: string
-  user: { id: number; name: string; email: string }
+  old_values?: Record<string, unknown> | null
+  new_values?: Record<string, unknown> | null
+  user: { id: number; name: string; email: string; role?: string }
   created_at: string
+}
+
+interface TimelineEntry {
+  key: string
+  action: string
+  user: { name: string; role?: string }
+  created_at: string
+  summary: string
+  details: string[]
+  quote?: string
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  title: 'Title',
+  description: 'Description',
+  due_date: 'Due date',
+  priority: 'Priority',
+  status: 'Status'
+}
+
+const humanize = (value: unknown) =>
+  value === null || value === undefined || value === ''
+    ? 'none'
+    : String(value).replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+
+const shorten = (text: string, length = 120) => (text.length > length ? `${text.slice(0, length)}…` : text)
+
+// Dates are stored either as "2026-01-03" or as a full timestamp; compare and show the day only
+const formatFieldValue = (field: string, value: unknown) => {
+  if (field === 'due_date') {
+    return value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString() : 'none'
+  }
+  if (field === 'title') return value ? `"${shorten(String(value), 60)}"` : 'none'
+  return humanize(value)
+}
+
+const describeLog = (log: ActivityLog): Pick<TimelineEntry, 'summary' | 'details' | 'quote'> => {
+  const oldValues = log.old_values ?? {}
+  const newValues = log.new_values ?? {}
+  const transition = oldValues.status && newValues.status && oldValues.status !== newValues.status
+    ? [`Status: ${humanize(oldValues.status)} → ${humanize(newValues.status)}`]
+    : []
+
+  switch (log.action) {
+    case 'acknowledged':
+      return { summary: 'Acknowledged the report and started work', details: transition }
+    case 'submitted_for_review':
+      return { summary: 'Submitted the work for client review', details: transition }
+    case 'returned_to_progress':
+      return { summary: 'Moved the report back to In Progress', details: transition }
+    case 'approved':
+      return { summary: 'Approved the work', details: transition }
+    case 'rejected':
+      return {
+        summary: 'Rejected the work',
+        details: transition,
+        quote: newValues.reason ? String(newValues.reason) : undefined
+      }
+    case 'closed':
+      return { summary: 'Closed the report', details: transition }
+    case 'updated': {
+      const details: string[] = []
+      Object.keys(FIELD_LABELS).forEach(field => {
+        if (!(field in newValues)) return
+        const before = field === 'due_date' ? String(oldValues[field] ?? '').slice(0, 10) : oldValues[field] ?? ''
+        const after = field === 'due_date' ? String(newValues[field] ?? '').slice(0, 10) : newValues[field] ?? ''
+        if (before === after) return
+
+        details.push(
+          field === 'description'
+            ? `Description changed to: ${shorten(String(after))}`
+            : `${FIELD_LABELS[field]}: ${formatFieldValue(field, before)} → ${formatFieldValue(field, after)}`
+        )
+      })
+      return {
+        summary: details.length > 0 ? 'Edited the report' : 'Saved the report without changes',
+        details
+      }
+    }
+    default:
+      return { summary: humanize(log.action), details: transition }
+  }
 }
 
 const statusColors = {
@@ -81,7 +167,10 @@ export default function ReportShow() {
   const [newComment, setNewComment] = useState('')
   const [showResolutionForm, setShowResolutionForm] = useState(false)
   const [showCommentForm, setShowCommentForm] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
+  // Opened from an edit button elsewhere (?edit=1): start in edit mode
+  const [isEditing, setIsEditing] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('edit') === '1'
+  )
   const [editData, setEditData] = useState({
     title: report.title,
     description: report.description,
@@ -276,6 +365,8 @@ export default function ReportShow() {
     switch (action) {
       case 'created':
         return <Plus className="w-4 h-4" />
+      case 'commented':
+        return <MessageCircle className="w-4 h-4" />
       case 'acknowledged':
         return <Eye className="w-4 h-4" />
       case 'submitted_for_review':
@@ -299,6 +390,8 @@ export default function ReportShow() {
     switch (action) {
       case 'created':
         return 'bg-blue-100 text-blue-600'
+      case 'commented':
+        return 'bg-teal-100 text-teal-600'
       case 'acknowledged':
         return 'bg-purple-100 text-purple-600'
       case 'submitted_for_review':
@@ -318,6 +411,40 @@ export default function ReportShow() {
     }
   }
 
+  // Everything that happened to this report, newest first: creation, status changes, edits and comments
+  const rejectionReasons = new Set(
+    activityLogs.filter(log => log.action === 'rejected' && log.new_values?.reason).map(log => String(log.new_values?.reason))
+  )
+  const timeline: TimelineEntry[] = [
+    ...activityLogs.map(log => ({
+      key: `log-${log.id}`,
+      action: log.action,
+      user: log.user,
+      created_at: log.created_at,
+      ...describeLog(log)
+    })),
+    // A rejection reason is also saved as a comment; it is already shown on the rejection itself
+    ...(report.comments ?? [])
+      .filter(item => !rejectionReasons.has(item.comment))
+      .map(item => ({
+        key: `comment-${item.id}`,
+        action: 'commented',
+        user: item.user,
+        created_at: item.created_at,
+        summary: 'Added a comment',
+        details: [],
+        quote: item.comment
+      })),
+    {
+      key: 'created',
+      action: 'created',
+      user: report.reporter,
+      created_at: report.created_at,
+      summary: 'Created the report',
+      details: typeof report.project === 'object' && report.project?.name ? [`Project: ${report.project.name}`] : []
+    }
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
   return (
     <AppLayout>
       <Head title={`Report #${report.id}`} />
@@ -331,7 +458,7 @@ export default function ReportShow() {
             onClick={() => router.get('/dashboard')}
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
+            Back to Reports
           </Button>
           
           <div className="flex-1">
@@ -591,39 +718,44 @@ export default function ReportShow() {
             {/* Activity Timeline */}
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Activity Timeline</h3>
-              {activityLogs.length > 0 ? (
-                <div className="space-y-4 max-h-96 overflow-y-auto">
-                  {activityLogs.map((log) => (
-                    <div key={log.id} className="flex gap-3 text-sm">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${getActionColor(log.action)}`}>
-                        {getActionIcon(log.action)}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{log.user.name}</span>
-                            <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
-                              {formatRole(log.user.role || 'user')}
-                            </span>
-                          </div>
-                          <span className="text-muted-foreground font-medium">
-                            {formatAction(log.action)}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(log.created_at).toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
+              <ol className="max-h-[32rem] overflow-y-auto pr-1">
+                {timeline.map((entry, index) => (
+                  <li key={entry.key} className="relative flex gap-3 pb-5 text-sm last:pb-0">
+                    {index < timeline.length - 1 && (
+                      <span className="absolute left-4 top-8 bottom-0 w-px bg-border" aria-hidden="true" />
+                    )}
+                    <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${getActionColor(entry.action)}`}>
+                      {getActionIcon(entry.action)}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                  <MessageCircle className="w-12 h-12 mb-2 text-gray-300" />
-                  <p className="text-sm">No activity yet</p>
-                  <p className="text-xs">Actions and updates will appear here</p>
-                </div>
-              )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{entry.user?.name ?? 'Unknown user'}</span>
+                        {entry.user?.role && (
+                          <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                            {formatRole(entry.user.role)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 font-medium text-muted-foreground">{entry.summary}</p>
+                      {entry.details.length > 0 && (
+                        <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                          {entry.details.map(detail => (
+                            <li key={detail} className="break-words">{detail}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {entry.quote && (
+                        <p className="mt-1.5 rounded-md border-l-2 border-brand-gold bg-brand-paper px-3 py-2 text-xs break-words whitespace-pre-wrap">
+                          {shorten(entry.quote, 240)}
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {new Date(entry.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
             </Card>
 
             {/* Client Actions */}
@@ -654,16 +786,47 @@ export default function ReportShow() {
                     </Button>
                   )}
 
-                  {canReject && (
+                  {canReject && !showCommentForm && (
                     <Button 
-                      onClick={() => handleAction('reject')}
+                      onClick={() => setShowCommentForm(true)}
                       disabled={loading}
                       variant="destructive"
                       className="w-full"
                     >
                       <XCircle className="w-4 h-4 mr-2" />
-                      {loading ? 'Saving...' : 'Reject'}
+                      Reject
                     </Button>
+                  )}
+
+                  {canReject && showCommentForm && (
+                    <div className="space-y-2">
+                      <Label htmlFor="reject-reason">Reason for rejecting</Label>
+                      <Textarea
+                        id="reject-reason"
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        placeholder="What still needs to be fixed?"
+                        rows={3}
+                      />
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={() => handleAction('reject', { comment: comment.trim() })}
+                          disabled={loading || comment.trim().length < 5}
+                          variant="destructive"
+                          className="flex-1"
+                        >
+                          <XCircle className="w-4 h-4 mr-2" />
+                          {loading ? 'Saving...' : 'Confirm Reject'}
+                        </Button>
+                        <Button 
+                          onClick={() => { setShowCommentForm(false); setComment('') }}
+                          disabled={loading}
+                          variant="outline"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </Card>

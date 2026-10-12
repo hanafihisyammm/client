@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "cff5d22bedafd15331d68afc266edc3b",
+    "content-hash": "ccb14fa3870c8abb8db6c209ecb21e74",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -612,6 +612,128 @@
                 }
             ],
             "time": "2025-03-06T22:45:56+00:00"
+        },
+        {
+            "name": "emailit/emailit-laravel",
+            "version": "v2.0.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/emailit/emailit-laravel.git",
+                "reference": "5387b5282fc49049bfecbe0950859a2879bdc734"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/emailit/emailit-laravel/zipball/5387b5282fc49049bfecbe0950859a2879bdc734",
+                "reference": "5387b5282fc49049bfecbe0950859a2879bdc734",
+                "shasum": ""
+            },
+            "require": {
+                "emailit/emailit-php": "^2.0",
+                "illuminate/mail": "^10.0|^11.0|^12.0|^13.0",
+                "illuminate/support": "^10.0|^11.0|^12.0|^13.0",
+                "php": "^8.1"
+            },
+            "require-dev": {
+                "orchestra/testbench": "^8.0|^9.0|^10.0|^11.0",
+                "pestphp/pest": "^1.0|^2.0|^3.0|^4.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "Emailit": "Emailit\\Laravel\\Facades\\Emailit"
+                    },
+                    "providers": [
+                        "Emailit\\Laravel\\EmailitServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Emailit\\Laravel\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Emailit",
+                    "email": "support@emailit.com",
+                    "homepage": "https://emailit.com"
+                }
+            ],
+            "description": "Laravel integration for the Emailit Email API",
+            "homepage": "https://emailit.com",
+            "keywords": [
+                "email",
+                "emailit",
+                "laravel",
+                "mail",
+                "transport"
+            ],
+            "support": {
+                "issues": "https://github.com/emailit/emailit-laravel/issues",
+                "source": "https://github.com/emailit/emailit-laravel/tree/v2.0.2"
+            },
+            "time": "2026-03-21T09:43:36+00:00"
+        },
+        {
+            "name": "emailit/emailit-php",
+            "version": "v2.0.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/emailit/emailit-php.git",
+                "reference": "292d943caef0fbd87a9e31123afe93dc9a8070b1"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/emailit/emailit-php/zipball/292d943caef0fbd87a9e31123afe93dc9a8070b1",
+                "reference": "292d943caef0fbd87a9e31123afe93dc9a8070b1",
+                "shasum": ""
+            },
+            "require": {
+                "guzzlehttp/guzzle": "^7.5",
+                "php": "^8.1.0"
+            },
+            "require-dev": {
+                "mockery/mockery": "^1.6",
+                "pestphp/pest": "^1.0|^2.0|^3.0|^4.0"
+            },
+            "type": "library",
+            "autoload": {
+                "files": [
+                    "src/Emailit.php"
+                ],
+                "psr-4": {
+                    "Emailit\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Emailit",
+                    "email": "support@emailit.com",
+                    "homepage": "https://emailit.com"
+                }
+            ],
+            "description": "PHP SDK for the Emailit Email API",
+            "homepage": "https://emailit.com",
+            "keywords": [
+                "api",
+                "email",
+                "emailit",
+                "sdk"
+            ],
+            "support": {
+                "issues": "https://github.com/emailit/emailit-php/issues",
+                "source": "https://github.com/emailit/emailit-php/tree/v2.0.2"
+            },
+            "time": "2026-03-03T17:26:42+00:00"
         },
         {
             "name": "fruitcake/php-cors",

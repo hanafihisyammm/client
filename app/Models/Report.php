@@ -10,6 +10,11 @@ use Illuminate\Support\Str;
 
 class Report extends Model
 {
+    /**
+     * Statuses where no further work is expected on a report.
+     */
+    public const FINISHED_STATUSES = ['approved', 'closed'];
+
     protected $fillable = [
         'title',
         'description',

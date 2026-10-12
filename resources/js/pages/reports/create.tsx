@@ -167,7 +167,7 @@ export default function CreateReport() {
             onClick={() => router.get('/dashboard')}
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
+            Back to Reports
           </Button>
           
           <div className="flex-1">

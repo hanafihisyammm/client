@@ -23,6 +23,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/projects/{uuid}/edit', [App\Http\Controllers\ProjectController::class, 'editByUuid'])->name('projects.edit.uuid');
     Route::patch('/projects/{uuid}/update', [App\Http\Controllers\ProjectController::class, 'updateByUuid'])->name('projects.update.uuid');
     
+    // Audit Log (Super Admin & Admin only)
+    Route::get('/audit-logs', [App\Http\Controllers\AuditLogController::class, 'index'])->name('audit-logs.index');
+
     // Report routes
     Route::get('/reports/create', [App\Http\Controllers\ReportViewController::class, 'create'])->name('reports.create');
     Route::get('/reports/{report}', [App\Http\Controllers\ReportViewController::class, 'show'])->name('reports.show');

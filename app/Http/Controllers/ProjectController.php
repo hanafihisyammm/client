@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\Project;
 use App\Models\Report;
 use App\Models\ReportActivityLog;
@@ -103,6 +104,9 @@ class ProjectController extends Controller
             'assigned_by' => Auth::id(),
             'assigned_at' => now(),
         ]);
+
+        app(NotificationService::class)->notifyProjectAssigned($project, $user, $validated['client_ids']);
+        $this->logMembershipChange($project, $validated['client_ids'], []);
 
         return redirect()->route('projects.index')
             ->with('flash', [
@@ -242,9 +246,13 @@ class ProjectController extends Controller
         }
 
         if (isset($validated['client_ids'])) {
-            $project->users()->sync($validated['client_ids']);
+            $synced = $project->users()->sync($validated['client_ids']);
+            app(NotificationService::class)->notifyProjectAssigned($project, $user, $synced['attached']);
+            $this->logMembershipChange($project, $synced['attached'], $synced['detached']);
         } else {
+            $removedIds = $project->users()->pluck('users.id')->all();
             $project->users()->detach();
+            $this->logMembershipChange($project, [], $removedIds);
         }
 
         // Send notifications if there were changes
@@ -319,9 +327,13 @@ class ProjectController extends Controller
                     'assigned_at' => now(),
                 ];
             }
-            $project->users()->sync($syncData);
+            $synced = $project->users()->sync($syncData);
+            app(NotificationService::class)->notifyProjectAssigned($project, $user, $synced['attached']);
+            $this->logMembershipChange($project, $synced['attached'], $synced['detached']);
         } else {
+            $removedIds = $project->users()->pluck('users.id')->all();
             $project->users()->detach();
+            $this->logMembershipChange($project, [], $removedIds);
         }
 
         // Send notifications if there were changes
@@ -406,5 +418,28 @@ class ProjectController extends Controller
         });
 
         return $openReports->count();
+    }
+
+    /**
+     * Record who was added to or removed from a project in the audit log.
+     */
+    private function logMembershipChange(Project $project, array $addedIds, array $removedIds): void
+    {
+        foreach (['Added' => $addedIds, 'Removed' => $removedIds] as $verb => $ids) {
+            if (empty($ids)) {
+                continue;
+            }
+
+            $names = User::whereIn('id', $ids)->orderBy('name')->pluck('name')->implode(', ');
+            $preposition = $verb === 'Added' ? 'to' : 'from';
+
+            AuditLog::record(
+                'project.members_' . strtolower($verb),
+                "{$verb} {$names} {$preposition} project \"{$project->name}\"",
+                'project',
+                $project->id,
+                $project->name
+            );
+        }
     }
 }

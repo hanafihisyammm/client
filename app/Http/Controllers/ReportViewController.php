@@ -74,7 +74,7 @@ class ReportViewController extends Controller
             'reporter:id,name,email,role',
             'assignee:id,name,email,role',
             'attachments',
-            'activityLogs.user:id,name,email',
+            'activityLogs.user:id,name,email,role',
             'comments.user:id,name,email,role'
         ]);
         

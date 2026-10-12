@@ -9,9 +9,20 @@
 
 @theme {
     --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'DM Sans', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
+    --font-heading: 'Manrope', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+
+    /* Sidra Core brand palette */
+    --color-brand-ink: #0e1116;
+    --color-brand-navy: #0f1e3d;
+    --color-brand-paper: #f7f7f4;
+    --color-brand-cream: #f6efdc;
+    --color-brand-line: #e5e1d6;
+    --color-brand-gold: #c19c3a;
+    --color-brand-gold-dark: #8a6a22;
+    --color-brand-muted: #4a4f57;
 
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
@@ -62,74 +73,74 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
+    --background: #f7f7f4;
+    --foreground: #0e1116;
+    --card: #ffffff;
+    --card-foreground: #0e1116;
+    --popover: #ffffff;
+    --popover-foreground: #0e1116;
+    --primary: #c19c3a;
+    --primary-foreground: #0e1116;
+    --secondary: #f6efdc;
+    --secondary-foreground: #0e1116;
+    --muted: #f1f1ed;
+    --muted-foreground: #4a4f57;
+    --accent: #f6efdc;
+    --accent-foreground: #0e1116;
     --destructive: oklch(0.577 0.245 27.325);
     --destructive-foreground: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.87 0 0);
-    --chart-1: oklch(0.646 0.222 41.116);
-    --chart-2: oklch(0.6 0.118 184.704);
-    --chart-3: oklch(0.398 0.07 227.392);
-    --chart-4: oklch(0.828 0.189 84.429);
-    --chart-5: oklch(0.769 0.188 70.08);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.87 0 0);
+    --border: #e5e1d6;
+    --input: #e5e1d6;
+    --ring: #c19c3a;
+    --chart-1: #c19c3a;
+    --chart-2: #0f1e3d;
+    --chart-3: #8a6a22;
+    --chart-4: #4a4f57;
+    --chart-5: #c8b789;
+    --radius: 0.5rem;
+    --sidebar: #ffffff;
+    --sidebar-foreground: #0e1116;
+    --sidebar-primary: #c19c3a;
+    --sidebar-primary-foreground: #0e1116;
+    --sidebar-accent: #f6efdc;
+    --sidebar-accent-foreground: #8a6a22;
+    --sidebar-border: #e5e1d6;
+    --sidebar-ring: #c19c3a;
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.145 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.145 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.985 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
+    --background: #0e1116;
+    --foreground: #f7f7f4;
+    --card: #151a21;
+    --card-foreground: #f7f7f4;
+    --popover: #151a21;
+    --popover-foreground: #f7f7f4;
+    --primary: #c19c3a;
+    --primary-foreground: #0e1116;
+    --secondary: #1c2129;
+    --secondary-foreground: #f7f7f4;
+    --muted: #1c2129;
+    --muted-foreground: #9ca1a8;
+    --accent: #1c2129;
+    --accent-foreground: #e0c98a;
     --destructive: oklch(0.396 0.141 25.723);
     --destructive-foreground: oklch(0.637 0.237 25.331);
-    --border: oklch(0.269 0 0);
-    --input: oklch(0.269 0 0);
-    --ring: oklch(0.439 0 0);
-    --chart-1: oklch(0.488 0.243 264.376);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.769 0.188 70.08);
-    --chart-4: oklch(0.627 0.265 303.9);
-    --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.985 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(0.269 0 0);
-    --sidebar-ring: oklch(0.439 0 0);
+    --border: #262b33;
+    --input: #262b33;
+    --ring: #c19c3a;
+    --chart-1: #c19c3a;
+    --chart-2: #e0c98a;
+    --chart-3: #9ca1a8;
+    --chart-4: #8a6a22;
+    --chart-5: #c8b789;
+    --sidebar: #0a0d11;
+    --sidebar-foreground: #f7f7f4;
+    --sidebar-primary: #c19c3a;
+    --sidebar-primary-foreground: #0e1116;
+    --sidebar-accent: #1c2129;
+    --sidebar-accent-foreground: #e0c98a;
+    --sidebar-border: #262b33;
+    --sidebar-ring: #c19c3a;
 }
 
 @layer base {
@@ -140,6 +151,27 @@
     body {
         @apply bg-background text-foreground;
     }
+
+    h1,
+    h2,
+    h3 {
+        font-family: var(--font-heading);
+        letter-spacing: -0.02em;
+    }
+}
+
+/* Small uppercase label above a heading, as on sidracoreacademy.com */
+.eyebrow {
+    color: var(--color-brand-gold-dark);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.7px;
+    line-height: 1.6;
+    text-transform: uppercase;
+}
+
+.dark .eyebrow {
+    color: #e0c98a;
 }
 
 /* Custom Animations */

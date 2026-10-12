@@ -43,6 +43,8 @@ export default function ProjectIndex({ projects }: Props) {
     const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
     const [sortField, setSortField] = useState<SortField>('created_at');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
@@ -78,8 +80,13 @@ export default function ProjectIndex({ projects }: Props) {
             const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                                 project.description?.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesStatus = statusFilter === 'all' || project.status === statusFilter;
+
+            // Compare on the created date in the viewer's own timezone
+            const created = new Date(project.created_at);
+            const createdDate = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`;
+            const matchesDate = (!dateFrom || createdDate >= dateFrom) && (!dateTo || createdDate <= dateTo);
             
-            return matchesSearch && matchesStatus;
+            return matchesSearch && matchesStatus && matchesDate;
         });
 
         return filtered.sort((a, b) => {
@@ -110,7 +117,7 @@ export default function ProjectIndex({ projects }: Props) {
             if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [projects, searchQuery, statusFilter, sortField, sortOrder]);
+    }, [projects, searchQuery, statusFilter, dateFrom, dateTo, sortField, sortOrder]);
 
     const handleSort = (field: SortField) => {
         const newOrder = sortField === field && sortOrder === 'asc' ? 'desc' : 'asc';
@@ -170,6 +177,31 @@ export default function ProjectIndex({ projects }: Props) {
                             <SelectItem value="completed">Completed</SelectItem>
                         </SelectContent>
                     </Select>
+
+                    <div className="flex items-center gap-2">
+                        <Input
+                            type="date"
+                            aria-label="Created from date"
+                            value={dateFrom}
+                            max={dateTo || undefined}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                            className="w-40"
+                        />
+                        <span className="text-sm text-muted-foreground">to</span>
+                        <Input
+                            type="date"
+                            aria-label="Created to date"
+                            value={dateTo}
+                            min={dateFrom || undefined}
+                            onChange={(e) => setDateTo(e.target.value)}
+                            className="w-40"
+                        />
+                        {(dateFrom || dateTo) && (
+                            <Button variant="ghost" size="sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                                Clear dates
+                            </Button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="bg-white shadow-sm border rounded-lg">
@@ -213,9 +245,26 @@ export default function ProjectIndex({ projects }: Props) {
                                         {getSortIcon('reports_count')}
                                     </Button>
                                 </TableHead>
+                                <TableHead>
+                                    <Button 
+                                        variant="ghost" 
+                                        className="h-auto p-0 font-semibold hover:bg-transparent"
+                                        onClick={() => handleSort('created_at')}
+                                    >
+                                        Created
+                                        {getSortIcon('created_at')}
+                                    </Button>
+                                </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
+                            {filteredAndSortedProjects.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={11} className="py-10 text-center text-gray-500">
+                                        No projects match these filters
+                                    </TableCell>
+                                </TableRow>
+                            )}
                             {filteredAndSortedProjects.map((project) => (
                                 <TableRow 
                                     key={project.id}
@@ -302,6 +351,9 @@ export default function ProjectIndex({ projects }: Props) {
                                             <FileText className="w-4 h-4 text-gray-400" />
                                             {project.reports_count}
                                         </div>
+                                    </TableCell>
+                                    <TableCell className="text-sm text-gray-600 whitespace-nowrap">
+                                        {new Date(project.created_at).toLocaleDateString()}
                                     </TableCell>
                                 </TableRow>
                             ))}

@@ -35,11 +35,4 @@ return [
         ],
     ],
 
-    'emailit' => [
-        'api_key' => env('EMAILIT_API_KEY'),
-        'api_host' => env('EMAILIT_API_HOST', 'api.emailit.com'),
-        'api_proto' => env('EMAILIT_API_PROTO', 'https'),
-        'api_path' => env('EMAILIT_API_PATH', 'v1'),
-    ],
-
 ];

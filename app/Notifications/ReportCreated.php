@@ -4,14 +4,10 @@ namespace App\Notifications;
 
 use App\Models\Report;
 use App\Models\User;
-use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 
-class ReportCreated extends Notification
+class ReportCreated extends AppNotification
 {
-    use Queueable;
-
     /**
      * Create a new notification instance.
      */
@@ -23,36 +19,27 @@ class ReportCreated extends Notification
     }
 
     /**
-     * Get the notification's delivery channels.
-     *
-     * @return array<int, string>
-     */
-    public function via(object $notifiable): array
-    {
-        return ['mail'];
-    }
-
-    /**
      * Get the mail representation of the notification.
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $creatorRole = $this->createdBy->isAdmin() ? ucfirst($this->createdBy->role) : 'Client';
-        
-        return (new MailMessage)
-            ->subject('New Report Created: ' . $this->report->title)
-            ->greeting('Hello ' . $notifiable->name . '!')
-            ->line('A new report has been created by ' . $creatorRole . ' ' . $this->createdBy->name . '.')
-            ->line('**Report:** ' . $this->report->title)
-            ->line('**Project:** ' . ($this->report->project->name ?? 'Unknown Project'))
-            ->line('**Created by:** ' . $this->createdBy->name . ' (' . ucfirst($this->createdBy->role) . ')')
-            ->line('**Priority:** ' . ucfirst($this->report->priority ?? 'Normal'))
-            ->when($this->report->due_date, function ($message) {
-                return $message->line('**Due Date:** ' . $this->report->due_date->format('M j, Y'));
-            })
-            ->line('**Description:** ' . $this->report->description)
-            ->action('View Report', url('/reports/' . $this->report->uuid))
-            ->line('Thank you for using Client Issue & Requirements Tracking System!');
+        return $this->buildMail(
+            $notifiable,
+            'New Report: ' . $this->report->title,
+            'New report created',
+            $this->createdBy->name . ' created a new report.',
+            [
+                'Report' => $this->report->title,
+                'Project' => $this->report->project->name ?? 'Unknown Project',
+                'Created by' => $this->nameWithRole($this->createdBy),
+                'Priority' => $this->humanize($this->report->priority ?? 'Normal'),
+                'Due date' => $this->report->due_date?->format('M j, Y'),
+            ],
+            'View Report',
+            '/reports/' . $this->report->uuid,
+            $this->report->description,
+            'Description'
+        );
     }
 
     /**
@@ -63,9 +50,12 @@ class ReportCreated extends Notification
     public function toArray(object $notifiable): array
     {
         return [
+            'title' => 'New report: ' . $this->report->title,
+            'message' => $this->createdBy->name . ' created a report in ' . ($this->report->project->name ?? 'Unknown Project') . '.',
+            'url' => '/reports/' . $this->report->uuid,
             'report_id' => $this->report->id,
             'report_title' => $this->report->title,
-            'project_name' => $this->report->project->name,
+            'project_name' => $this->report->project?->name,
             'created_by' => $this->createdBy->name,
             'created_by_role' => $this->createdBy->role,
             'priority' => $this->report->priority,

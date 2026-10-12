@@ -4,14 +4,10 @@ namespace App\Notifications;
 
 use App\Models\Project;
 use App\Models\User;
-use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 
-class ProjectUpdated extends Notification
+class ProjectUpdated extends AppNotification
 {
-    use Queueable;
-
     /**
      * Create a new notification instance.
      */
@@ -24,46 +20,47 @@ class ProjectUpdated extends Notification
     }
 
     /**
-     * Get the notification's delivery channels.
-     *
-     * @return array<int, string>
-     */
-    public function via(object $notifiable): array
-    {
-        return ['mail'];
-    }
-
-    /**
      * Get the mail representation of the notification.
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $updaterRole = $this->updatedBy->isAdmin() ? ucfirst($this->updatedBy->role) : 'Client';
-        
-        return (new MailMessage)
-            ->subject('Project Updated: ' . $this->project->name)
-            ->greeting('Hello ' . $notifiable->name . '!')
-            ->line('A project you are involved in has been updated by ' . $this->updatedBy->name . ' (' . ucfirst($this->updatedBy->role) . ').')
-            ->line('**Project:** ' . $this->project->name)
-            ->line('**Updated by:** ' . $this->updatedBy->name . ' (' . ucfirst($this->updatedBy->role) . ')')
-            ->line('**Changes made:**')
-            ->lines($this->formatChanges())
-            ->action('View Project', url('/admin/projects/' . $this->project->uuid))
-            ->line('Thank you for using Client Issue & Requirements Tracking System!');
+        return $this->buildMail(
+            $notifiable,
+            'Project Updated: ' . $this->project->name,
+            'Project updated',
+            $this->updatedBy->name . ' updated a project you are involved in.',
+            [
+                'Project' => $this->project->name,
+                'Updated by' => $this->nameWithRole($this->updatedBy),
+                ...$this->formatChanges(),
+            ],
+            $notifiable->isAdmin() ? 'View Project' : 'Open Reports',
+            $this->urlFor($notifiable)
+        );
     }
 
     /**
-     * Format the changes for display in email.
+     * Only admins can open project pages; clients are sent to their dashboard.
+     */
+    private function urlFor(object $notifiable): string
+    {
+        return $notifiable->isAdmin() ? '/projects/view/' . $this->project->uuid : '/dashboard';
+    }
+
+    /**
+     * Format the changes as detail rows: field => "old → new".
+     *
+     * @return array<string, string>
      */
     private function formatChanges(): array
     {
         $formattedChanges = [];
-        
+
         foreach ($this->changes as $field => $change) {
             $fieldName = ucfirst(str_replace('_', ' ', $field));
-            $formattedChanges[] = "• {$fieldName}: {$change['old']} → {$change['new']}";
+            $formattedChanges[$fieldName] = ($change['old'] ?: 'None') . ' → ' . ($change['new'] ?: 'None');
         }
-        
+
         return $formattedChanges;
     }
 
@@ -75,6 +72,9 @@ class ProjectUpdated extends Notification
     public function toArray(object $notifiable): array
     {
         return [
+            'title' => 'Project updated: ' . $this->project->name,
+            'message' => $this->updatedBy->name . ' changed the project ' . implode(', ', array_keys($this->changes)) . '.',
+            'url' => $this->urlFor($notifiable),
             'project_id' => $this->project->id,
             'project_name' => $this->project->name,
             'updated_by' => $this->updatedBy->name,

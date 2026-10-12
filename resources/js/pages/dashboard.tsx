@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Search, FileText, User as UserIcon, Calendar, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2 } from 'lucide-react'
+import { Plus, Search, FileText, User as UserIcon, Calendar, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2, Inbox, Loader, ClipboardCheck, RotateCcw, AlarmClock, X, type LucideIcon } from 'lucide-react'
 import AppLayout from '@/layouts/app-layout'
 import type { User } from '@/types'
 
@@ -41,7 +41,18 @@ interface PageProps extends Record<string, unknown> {
   };
   projects: Project[];
   userRole: string;
+  stats: Record<StatKey, number>;
 }
+
+type StatKey = 'pending' | 'in_progress' | 'submit_for_review' | 'rejected' | 'overdue'
+
+const statCards: Array<{ key: StatKey; label: string; hint: string; icon: LucideIcon; color: string }> = [
+  { key: 'pending', label: 'Pending', hint: 'Not yet acknowledged', icon: Inbox, color: 'text-brand-gold-dark bg-brand-cream' },
+  { key: 'in_progress', label: 'In Progress', hint: 'Being worked on', icon: Loader, color: 'text-brand-navy bg-brand-navy/10' },
+  { key: 'submit_for_review', label: 'Awaiting Review', hint: 'Waiting for client approval', icon: ClipboardCheck, color: 'text-brand-ink bg-brand-gold/40' },
+  { key: 'rejected', label: 'Rejected', hint: 'Sent back, needs rework', icon: RotateCcw, color: 'text-red-600 bg-red-50' },
+  { key: 'overdue', label: 'Overdue', hint: 'Past due date, still open', icon: AlarmClock, color: 'text-orange-600 bg-orange-50' },
+]
 
 const statusColors = {
   pending: 'bg-yellow-500',
@@ -56,7 +67,7 @@ type SortField = 'title' | 'project' | 'status' | 'priority' | 'due_date' | 'rep
 type SortOrder = 'asc' | 'desc'
 
 export default function Dashboard() {
-  const { auth, projects, userRole } = usePage<PageProps>().props
+  const { auth, projects, userRole, stats } = usePage<PageProps>().props
   const [allReports, setAllReports] = useState<Report[]>([])
   const [filteredReports, setFilteredReports] = useState<Report[]>([])
   const [loading, setLoading] = useState(true)
@@ -66,12 +77,27 @@ export default function Dashboard() {
     status: 'all',
     priority: 'all',
     project: 'all',
-    search: ''
+    search: '',
+    overdue: 'all'
   })
+
+  const activeStat: StatKey | null = filters.overdue === '1'
+    ? 'overdue'
+    : statCards.some(card => card.key === filters.status) ? filters.status as StatKey : null
+
+  // Clicking a card shows just those reports; clicking it again shows everything
+  const toggleStat = (key: StatKey) => {
+    setFilters(prev => ({
+      ...prev,
+      status: key === 'overdue' || activeStat === key ? 'all' : key,
+      overdue: key === 'overdue' && activeStat !== 'overdue' ? '1' : 'all'
+    }))
+  }
   const fetchReports = async (currentFilters = filters) => {
     try {
       setLoading(true)
-      const params = new URLSearchParams()
+      // The table has no paging, so ask for enough rows to match the KPI counts
+      const params = new URLSearchParams({ per_page: '200' })
       
       Object.entries(currentFilters).forEach(([key, value]) => {
         if (value && value !== 'all') {
@@ -175,15 +201,16 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <Head title="Dashboard" />
+      <Head title="Reports" />
       
       
       <div className="space-y-6 px-4 py-2">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Dashboard</h1>
+            <p className="eyebrow mb-1">Sidra Desk</p>
+            <h1 className="text-3xl font-extrabold">Reports</h1>
             <p className="text-muted-foreground mt-1">
-              Manage your issues and requirements
+              Track issues and requirements, and see what needs attention
             </p>
           </div>
           
@@ -211,13 +238,18 @@ export default function Dashboard() {
             // For clients with no projects, show a disabled button with tooltip
             if (userRole === 'client' && projects.length === 0) {
               return (
-                <Button 
-                  disabled 
-                  title="You must be assigned to a project before creating reports"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Report
-                </Button>
+                <div className="text-right">
+                  <Button 
+                    disabled 
+                    title="You have no active projects, so new reports can't be created"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Report
+                  </Button>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    You have no active projects. Ask your administrator to assign or reopen one.
+                  </p>
+                </div>
               );
             }
             
@@ -225,7 +257,28 @@ export default function Dashboard() {
           })()}
         </div>
 
-        <div className="flex flex-wrap gap-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+          {statCards.map(({ key, label, hint, icon: Icon, color }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggleStat(key)}
+              aria-pressed={activeStat === key}
+              className={`rounded-[14px] border bg-card p-5 text-left transition hover:-translate-y-0.5 hover:border-brand-gold hover:shadow-[0_9px_24px_#81725426] ${activeStat === key ? 'border-brand-gold ring-1 ring-brand-gold' : ''}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="eyebrow">{label}</span>
+                <span className={`rounded-md p-1.5 ${color}`}>
+                  <Icon className="h-4 w-4" />
+                </span>
+              </div>
+              <p className="mt-3 font-[family-name:var(--font-heading)] text-4xl font-extrabold tracking-tight">{stats[key]}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center space-x-2">
             <Search className="w-4 h-4 text-muted-foreground" />
             <Input
@@ -236,7 +289,7 @@ export default function Dashboard() {
             />
           </div>
           
-          <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+          <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value, overdue: 'all' }))}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
@@ -262,6 +315,13 @@ export default function Dashboard() {
               ))}
             </SelectContent>
           </Select>
+
+          {filters.overdue === '1' && (
+            <Button variant="outline" size="sm" onClick={() => setFilters(prev => ({ ...prev, overdue: 'all' }))}>
+              Overdue only
+              <X className="w-4 h-4 ml-1" />
+            </Button>
+          )}
         </div>
 
         {loading ? (
@@ -274,10 +334,14 @@ export default function Dashboard() {
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <FileText className="w-8 h-8 text-gray-400" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No reports yet</h3>
-              <p className="text-gray-600 mb-6">Get started by creating your first report.</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {Object.values(filters).some(value => value && value !== 'all') ? 'No reports match these filters' : 'No reports yet'}
+              </h3>
+              <p className="text-gray-600 mb-6">
+                {Object.values(filters).some(value => value && value !== 'all') ? 'Try clearing a filter or picking another card.' : 'Get started by creating your first report.'}
+              </p>
               {auth.user.role === 'client' && (
-                <Button onClick={() => router.get('/reports/create')} className="bg-blue-600 hover:bg-blue-700">
+                <Button onClick={() => router.get('/reports/create')}>
                   <Plus className="w-4 h-4 mr-2" />
                   Create Your First Report
                 </Button>
@@ -285,7 +349,7 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          <div className="bg-white shadow-sm border rounded-lg">
+          <div className="overflow-hidden rounded-[14px] border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -367,7 +431,7 @@ export default function Dashboard() {
                 {filteredReports.map((report) => (
                   <TableRow 
                     key={`report-${report.id}-${report.uuid}`}
-                    className="hover:bg-gray-50"
+                    className="hover:bg-brand-paper"
                   >
                     <TableCell>
                       <div className="flex items-center gap-1">
@@ -382,14 +446,15 @@ export default function Dashboard() {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
+                        {/* Clients can only edit their own reports while they are still pending */}
                         {(userRole === 'admin' || userRole === 'super_admin' || 
-                          (userRole === 'client' && report.reporter?.id === auth.user.id)) && (
+                          (userRole === 'client' && report.reporter?.id === auth.user.id && report.status === 'pending')) && (
                           <Button 
                             size="sm" 
                             variant="ghost" 
                             onClick={(e) => {
                               e.stopPropagation()
-                              router.get(`/reports/${report.uuid}`)
+                              router.get(`/reports/${report.uuid}?edit=1`)
                             }}
                             title="Edit report"
                           >

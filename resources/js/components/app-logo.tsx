@@ -1,17 +1,15 @@
-import { ClipboardCheck } from 'lucide-react';
+import SidraMark from '@/components/sidra-mark';
 
 export default function AppLogo() {
     return (
         <>
-            <div className="flex aspect-square size-7 items-center justify-center rounded-md bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-                <ClipboardCheck className="size-4 text-white" />
-            </div>
+            <SidraMark className="size-8" />
             <div className="ml-2 grid flex-1 text-left">
-                <span className="truncate text-xs font-medium text-gray-900 dark:text-white leading-tight">
-                    Sidra Core Sdn Bhd
+                <span className="truncate text-xs font-semibold leading-tight text-sidebar-foreground">
+                    Sidra Desk
                 </span>
-                <span className="truncate text-xs text-gray-500 dark:text-gray-400 leading-tight">
-                    Issue Tracking
+                <span className="truncate text-xs leading-tight text-sidebar-foreground/60">
+                    by Sidra Core
                 </span>
             </div>
         </>

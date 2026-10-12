@@ -6,10 +6,15 @@ use App\Models\Project;
 use App\Models\Report;
 use App\Models\ReportComment;
 use App\Models\User;
+use App\Notifications\AccountCreated;
 use App\Notifications\CommentAdded;
+use App\Notifications\ProjectAssigned;
 use App\Notifications\ProjectUpdated;
 use App\Notifications\ReportCreated;
+use App\Notifications\ReportDeleted;
 use App\Notifications\ReportStatusChanged;
+use App\Notifications\ReportUpdated;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Notification;
 
 class NotificationService
@@ -19,27 +24,42 @@ class NotificationService
      */
     public function notifyProjectUpdated(Project $project, User $updatedBy, array $changes): void
     {
-        // Ensure users relationship is loaded
-        $project->load('users');
-        $recipients = $this->getProjectRecipients($project, $updatedBy);
-        
-        if ($recipients->isNotEmpty()) {
-            Notification::send($recipients, new ProjectUpdated($project, $updatedBy, $changes));
-        }
+        $this->send($this->getProjectRecipients($project, $updatedBy), new ProjectUpdated($project, $updatedBy, $changes));
+    }
+
+    /**
+     * Notify clients when they are added to a project.
+     *
+     * @param  array<int, int|string>  $clientIds
+     */
+    public function notifyProjectAssigned(Project $project, User $assignedBy, array $clientIds): void
+    {
+        $recipients = User::whereIn('id', $clientIds)
+            ->where('id', '!=', $assignedBy->id)
+            ->get();
+
+        $this->send($recipients, new ProjectAssigned($project, $assignedBy));
+    }
+
+    /**
+     * Welcome a user whose account was created by an admin.
+     */
+    public function notifyAccountCreated(User $newUser, User $createdBy): void
+    {
+        $newUser->notify(new AccountCreated($createdBy));
     }
 
     /**
      * Notify relevant users when a report status changes.
      */
-    public function notifyReportStatusChanged(Report $report, User $updatedBy, string $oldStatus, string $newStatus): void
+    public function notifyReportStatusChanged(Report $report, User $updatedBy, string $oldStatus, string $newStatus, ?string $reason = null): void
     {
-        // Ensure project relationship is loaded with users
-        $report->load('project.users');
-        $recipients = $this->getReportRecipients($report, $updatedBy);
-        
-        if ($recipients->isNotEmpty()) {
-            Notification::send($recipients, new ReportStatusChanged($report, $updatedBy, $oldStatus, $newStatus));
-        }
+        $report->load('project');
+
+        $this->send(
+            $this->getReportRecipients($report, $updatedBy),
+            new ReportStatusChanged($report, $updatedBy, $oldStatus, $newStatus, $reason)
+        );
     }
 
     /**
@@ -47,13 +67,32 @@ class NotificationService
      */
     public function notifyReportCreated(Report $report, User $createdBy): void
     {
-        // Ensure project relationship is loaded with users
-        $report->load('project.users');
-        $recipients = $this->getReportRecipients($report, $createdBy);
-        
-        if ($recipients->isNotEmpty()) {
-            Notification::send($recipients, new ReportCreated($report, $createdBy));
-        }
+        $report->load('project');
+
+        $this->send($this->getReportRecipients($report, $createdBy), new ReportCreated($report, $createdBy));
+    }
+
+    /**
+     * Notify relevant users when a report's details are edited.
+     */
+    public function notifyReportUpdated(Report $report, User $updatedBy, array $changes): void
+    {
+        $report->load('project');
+
+        $this->send($this->getReportRecipients($report, $updatedBy), new ReportUpdated($report, $updatedBy, $changes));
+    }
+
+    /**
+     * Notify relevant users when a report is deleted. Call this before deleting the report.
+     */
+    public function notifyReportDeleted(Report $report, User $deletedBy): void
+    {
+        $report->load('project');
+
+        $this->send(
+            $this->getReportRecipients($report, $deletedBy),
+            new ReportDeleted($report->title, $report->project?->name, $deletedBy)
+        );
     }
 
     /**
@@ -61,129 +100,48 @@ class NotificationService
      */
     public function notifyCommentAdded(Report $report, ReportComment $comment, User $commentedBy): void
     {
-        // Ensure project relationship is loaded
-        $report->load('project.users');
-        $recipients = $this->getCommentRecipients($report, $commentedBy);
-        
+        $report->load('project');
+
+        $this->send($this->getReportRecipients($report, $commentedBy), new CommentAdded($report, $comment, $commentedBy));
+    }
+
+    private function send(Collection $recipients, \Illuminate\Notifications\Notification $notification): void
+    {
         if ($recipients->isNotEmpty()) {
-            Notification::send($recipients, new CommentAdded($report, $comment, $commentedBy));
+            Notification::send($recipients, $notification);
         }
     }
 
     /**
-     * Get recipients for project notifications.
-     * - If admin makes changes: notify all clients on the project
-     * - If client makes changes: notify all admins and super admins
+     * Everyone involved in a project except the person who acted:
+     * all admins and super admins, plus the clients assigned to the project.
      */
-    private function getProjectRecipients(Project $project, User $updatedBy): \Illuminate\Database\Eloquent\Collection
+    private function getProjectRecipients(?Project $project, User $actor, ?int $reporterId = null): Collection
     {
-        if ($updatedBy->isAdmin()) {
-            // Admin updated project - notify all clients on this project
-            return $project->users()->where('users.role', 'client')->get();
-        } else {
-            // Client updated project - notify all admins and super admins
-            return User::whereIn('role', ['admin', 'super_admin'])->get();
-        }
-    }
+        $projectId = $project?->id;
 
-    /**
-     * Get recipients for report notifications.
-     * - If admin makes changes: notify the reporter (if client) and all clients on the project
-     * - If client makes changes: notify all admins, super admins, and assigned admin (if any)
-     */
-    private function getReportRecipients(Report $report, User $updatedBy): \Illuminate\Database\Eloquent\Collection
-    {
-        $recipients = collect();
+        return User::where('id', '!=', $actor->id)
+            ->where(function ($query) use ($projectId, $reporterId) {
+                $query->whereIn('role', ['admin', 'super_admin'])
+                    ->orWhereIn('id', function ($sub) use ($projectId) {
+                        $sub->select('user_id')
+                            ->from('project_users')
+                            ->where('project_id', $projectId);
+                    });
 
-        if ($updatedBy->isAdmin()) {
-            // Admin created/updated report
-            
-            // Notify the reporter if they are a client and not the updater
-            if ($report->reporter && $report->reporter->isClient() && $report->reporter->id !== $updatedBy->id) {
-                $recipients->push($report->reporter);
-            }
-            
-            // Notify all clients on this project (excluding the reporter to avoid duplicates)
-            if ($report->project_id) {
-                $projectClients = \App\Models\Project::find($report->project_id)
-                    ?->users()
-                    ->where('users.role', 'client')
-                    ->where('users.id', '!=', $report->reporter?->id ?? 0)
-                    ->get();
-                    
-                if ($projectClients) {
-                    $recipients = $recipients->merge($projectClients);
+                if ($reporterId) {
+                    $query->orWhere('id', $reporterId);
                 }
-            }
-            
-        } else {
-            // Client created/updated report - notify all admins and super admins
-            $admins = User::whereIn('role', ['admin', 'super_admin'])->get();
-            $recipients = $recipients->merge($admins);
-            
-            // Also notify assigned admin if exists and not already included
-            if ($report->assignee && $report->assignee->isAdmin()) {
-                $recipients->push($report->assignee);
-            }
-        }
-
-        // Remove the updater from recipients to avoid self-notification
-        $filtered = $recipients->filter(function ($user) use ($updatedBy) {
-            return $user->id !== $updatedBy->id;
-        })->unique('id');
-        
-        // Convert back to Eloquent Collection
-        return new \Illuminate\Database\Eloquent\Collection($filtered->values());
+            })
+            ->get();
     }
 
     /**
-     * Get recipients for comment notifications.
-     * - If admin comments: notify the report owner (if client) and other project members
-     * - If client comments: notify all admins, super admins, and assigned admin (if any)
+     * Everyone involved in a report except the person who acted:
+     * the project's audience plus the reporter, even if they have since left the project.
      */
-    private function getCommentRecipients(Report $report, User $commentedBy): \Illuminate\Database\Eloquent\Collection
+    private function getReportRecipients(Report $report, User $actor): Collection
     {
-        $recipients = collect();
-
-        if ($commentedBy->isAdmin()) {
-            // Admin commented - notify the reporter (if client) and other project clients
-            
-            // Notify the reporter if they are a client and not the commenter
-            if ($report->reporter && $report->reporter->isClient() && $report->reporter->id !== $commentedBy->id) {
-                $recipients->push($report->reporter);
-            }
-            
-            // Notify other clients on this project (excluding the reporter to avoid duplicates)
-            if ($report->project_id) {
-                $projectClients = \App\Models\Project::find($report->project_id)
-                    ?->users()
-                    ->where('users.role', 'client')
-                    ->where('users.id', '!=', $report->reporter?->id ?? 0)
-                    ->where('users.id', '!=', $commentedBy->id)
-                    ->get();
-                    
-                if ($projectClients) {
-                    $recipients = $recipients->merge($projectClients);
-                }
-            }
-            
-        } else {
-            // Client commented - notify all admins and super admins
-            $admins = User::whereIn('role', ['admin', 'super_admin'])
-                ->where('id', '!=', $commentedBy->id)
-                ->get();
-            $recipients = $recipients->merge($admins);
-            
-            // Also notify assigned admin if exists and not already included
-            if ($report->assignee && $report->assignee->isAdmin() && $report->assignee->id !== $commentedBy->id) {
-                $recipients->push($report->assignee);
-            }
-        }
-
-        // Remove duplicates
-        $filtered = $recipients->unique('id');
-        
-        // Convert back to Eloquent Collection
-        return new \Illuminate\Database\Eloquent\Collection($filtered->values());
+        return $this->getProjectRecipients($report->project, $actor, $report->reported_by);
     }
 }

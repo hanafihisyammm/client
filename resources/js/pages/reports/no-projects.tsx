@@ -23,7 +23,7 @@ export default function NoProjects({ userRole, message }: PageProps) {
                         onClick={() => router.get('/dashboard')}
                     >
                         <ArrowLeft className="w-4 h-4 mr-2" />
-                        Back to Dashboard
+                        Back to Reports
                     </Button>
                     
                     <div className="flex-1">
@@ -67,7 +67,7 @@ export default function NoProjects({ userRole, message }: PageProps) {
                                     onClick={() => router.get('/dashboard')}
                                     className="bg-amber-600 hover:bg-amber-700"
                                 >
-                                    Return to Dashboard
+                                    Return to Reports
                                 </Button>
                             </div>
                         </CardContent>
