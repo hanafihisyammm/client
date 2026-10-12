@@ -12,10 +12,12 @@ class Project extends Model
 {
     protected $fillable = [
         'name',
+        'prefix',
         'description',
         'status',
         'created_by',
         'uuid',
+        'next_issue_number',
     ];
 
     protected static function boot()
@@ -26,7 +28,56 @@ class Project extends Model
             if (empty($project->uuid)) {
                 $project->uuid = Str::uuid();
             }
+
+            // Generate prefix if not set
+            if (empty($project->prefix)) {
+                $project->prefix = $project->generatePrefix();
+            }
         });
+    }
+
+    /**
+     * Generate a prefix from the project name
+     */
+    public function generatePrefix(): string
+    {
+        $name = $this->name ?? 'Project';
+        $words = preg_split('/[\s\-_]+/', preg_replace('/[^a-zA-Z0-9\s\-_]/', '', $name));
+
+        if (count($words) === 1) {
+            $basePrefix = strtoupper(substr($words[0], 0, 4));
+        } else {
+            $basePrefix = '';
+            foreach (array_slice($words, 0, 4) as $word) {
+                if (!empty($word)) {
+                    $basePrefix .= strtoupper($word[0]);
+                }
+            }
+        }
+
+        $prefix = $basePrefix ?: 'PROJ';
+
+        // Make unique by checking existing prefixes
+        $counter = 1;
+        $uniquePrefix = $prefix;
+        while (self::where('prefix', $uniquePrefix)->where('id', '!=', $this->id ?? 0)->exists()) {
+            $uniquePrefix = $prefix . $counter;
+            $counter++;
+        }
+
+        return $uniquePrefix;
+    }
+
+    /**
+     * Get the next issue key and increment the counter
+     */
+    public function getNextIssueKey(): string
+    {
+        $issueKey = $this->prefix . '-' . $this->next_issue_number;
+
+        $this->increment('next_issue_number');
+
+        return $issueKey;
     }
 
     protected function casts(): array
@@ -60,6 +111,11 @@ class Project extends Model
     public function reports(): HasMany
     {
         return $this->hasMany(Report::class);
+    }
+
+    public function labels(): HasMany
+    {
+        return $this->hasMany(Label::class);
     }
 
     public function isActive(): bool

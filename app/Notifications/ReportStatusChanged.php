@@ -41,7 +41,7 @@ class ReportStatusChanged extends AppNotification
             'View Report',
             '/reports/' . $this->report->uuid,
             $this->reason,
-            'Reason'
+            $this->newStatus === Report::STATUS_RESOLVED ? 'Resolution' : 'Reason'
         );
     }
 
@@ -63,7 +63,7 @@ class ReportStatusChanged extends AppNotification
         return [
             'title' => 'Report ' . strtolower($this->formatStatus($this->newStatus)) . ': ' . $this->report->title,
             'message' => $this->updatedBy->name . ' changed the status from ' . $this->formatStatus($this->oldStatus) . ' to ' . $this->formatStatus($this->newStatus) . '.'
-                . ($this->reason ? ' Reason: ' . Str::limit($this->reason, 120) : ''),
+                . ($this->reason ? ' ' . ($this->newStatus === Report::STATUS_RESOLVED ? 'Resolution' : 'Reason') . ': ' . Str::limit($this->reason, 120) : ''),
             'url' => '/reports/' . $this->report->uuid,
             'report_id' => $this->report->id,
             'report_title' => $this->report->title,

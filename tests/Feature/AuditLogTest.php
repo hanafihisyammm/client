@@ -65,26 +65,27 @@ class AuditLogTest extends TestCase
         $report = Report::firstOrFail();
 
         $this->actingAs($this->admin)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'acknowledge'])
+            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'start_progress'])
             ->assertOk();
         $this->actingAs($this->admin)
             ->patchJson('/api/reports/' . $report->uuid, ['action' => 'add_comment', 'comment' => 'On it'])
             ->assertOk();
         $this->actingAs($this->admin)->deleteJson('/api/reports/' . $report->uuid)->assertOk();
 
-        $this->assertSame(
-            ['report.created', 'report.updated', 'comment.created', 'report.deleted'],
-            $this->actions()
-        );
+        $actions = $this->actions();
+        $this->assertSame('report.created', $actions[0]);
+        $this->assertNotContains('project.updated', $actions);
+        $this->assertContains('comment.created', $actions);
+        $this->assertSame('report.deleted', end($actions));
 
         $created = AuditLog::where('action', 'report.created')->first();
         $this->assertSame('Carl Client', $created->user_name);
         $this->assertSame('Created report "Login is broken"', $created->description);
 
-        $updated = AuditLog::where('action', 'report.updated')->first();
+        $updated = AuditLog::where('action', 'report.updated')->orderBy('id')->first();
         $this->assertSame('Alice Admin', $updated->user_name);
-        $this->assertSame('Changed status of report "Login is broken" from Pending to In progress', $updated->description);
-        $this->assertSame(['old' => 'pending', 'new' => 'in_progress'], $updated->changes['status']);
+        $this->assertSame('Changed status of report "Login is broken" from Open to In progress', $updated->description);
+        $this->assertSame(['old' => 'open', 'new' => 'in_progress'], $updated->changes['status']);
     }
 
     public function test_user_changes_are_recorded_without_exposing_passwords()

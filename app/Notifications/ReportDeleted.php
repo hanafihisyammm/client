@@ -35,7 +35,7 @@ class ReportDeleted extends AppNotification
                 'Project' => $this->projectName ?? 'Unknown Project',
                 'Deleted by' => $this->nameWithRole($this->deletedBy),
             ],
-            'Open Reports',
+            'Open Issues',
             '/dashboard'
         );
     }

@@ -15,7 +15,7 @@ class AuditObserver
     /**
      * Attributes that change on their own and say nothing about what the user did.
      */
-    private const IGNORED = ['updated_at', 'remember_token'];
+    private const IGNORED = ['updated_at', 'remember_token', 'next_issue_number', 'response_sla_breached', 'resolution_sla_breached'];
 
     /**
      * Attributes whose values must never be written to the log.

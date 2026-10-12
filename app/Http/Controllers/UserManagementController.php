@@ -36,8 +36,8 @@ class UserManagementController extends Controller
 
         // Determine allowed roles based on current user
         $allowedRoles = match ($currentUser->role) {
-            'super_admin' => ['admin', 'developer', 'client'],
-            'admin' => ['developer', 'client'],
+            'super_admin' => ['admin', 'manager', 'developer', 'client'],
+            'admin' => ['manager', 'developer', 'client'],
             default => [],
         };
 
@@ -78,8 +78,8 @@ class UserManagementController extends Controller
         }
 
         $allowedRoles = match ($currentUser->role) {
-            'super_admin' => ['admin', 'developer', 'client'],
-            'admin' => ['developer', 'client'],
+            'super_admin' => ['admin', 'manager', 'developer', 'client'],
+            'admin' => ['manager', 'developer', 'client'],
             default => [],
         };
 

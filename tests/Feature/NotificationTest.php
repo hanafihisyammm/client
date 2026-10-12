@@ -51,7 +51,7 @@ class NotificationTest extends TestCase
             'project_id' => $this->project->id,
             'priority' => 'high',
             'reported_by' => $this->client->id,
-            'status' => 'pending',
+            'status' => 'open',
         ], $attributes));
     }
 
@@ -109,7 +109,7 @@ class NotificationTest extends TestCase
         $report = $this->makeReport();
 
         $this->actingAs($this->admin)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'acknowledge'])
+            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'start_progress'])
             ->assertOk();
 
         $this->assertSame(['Report in progress: Login is broken'], $this->titlesFor($this->client));
@@ -118,28 +118,53 @@ class NotificationTest extends TestCase
         $this->assertCount(0, $this->admin->notifications);
     }
 
-    public function test_rejecting_requires_a_reason_and_saves_and_sends_it()
+    public function test_reopening_with_a_reason_saves_and_sends_it()
     {
-        $report = $this->makeReport(['status' => 'submit_for_review']);
+        $report = $this->makeReport(['status' => 'resolved']);
 
         $this->actingAs($this->client)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'reject'])
-            ->assertStatus(422);
-
-        $this->actingAs($this->client)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'reject', 'comment' => 'Still fails on Safari'])
+            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'reopen', 'comment' => 'Still fails on Safari'])
             ->assertOk();
 
-        $this->assertSame('rejected', $report->fresh()->status);
+        $this->assertSame('reopened', $report->fresh()->status);
         $this->assertSame('Still fails on Safari', $report->comments()->first()->comment);
 
-        $log = $report->activityLogs()->where('action', 'rejected')->first();
-        $this->assertSame(['status' => 'submit_for_review'], $log->old_values);
-        $this->assertSame(['status' => 'rejected', 'reason' => 'Still fails on Safari'], $log->new_values);
+        $log = $report->activityLogs()->where('action', 'status_changed')->first();
+        $this->assertSame('resolved', $log->old_values['status']);
+        $this->assertSame('reopened', $log->new_values['status']);
+        $this->assertSame('Still fails on Safari', $log->new_values['reason']);
 
         $notification = $this->admin->notifications()->first();
+        $this->assertSame('Report reopened: Login is broken', $notification->data['title']);
         $this->assertSame('Still fails on Safari', $notification->data['reason']);
-        $this->assertStringContainsString('Still fails on Safari', $notification->data['message']);
+        $this->assertStringContainsString('Reason: Still fails on Safari', $notification->data['message']);
+    }
+
+    public function test_resolving_sends_the_resolution_summary()
+    {
+        $report = $this->makeReport(['status' => 'in_progress']);
+
+        $this->actingAs($this->admin)
+            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'resolve', 'resolution_summary' => 'Fixed the session cookie'])
+            ->assertOk();
+
+        $notification = $this->client->notifications()->first();
+        $this->assertSame('Report resolved: Login is broken', $notification->data['title']);
+        $this->assertStringContainsString('Resolution: Fixed the session cookie', $notification->data['message']);
+    }
+
+    public function test_assigning_a_report_notifies_the_assignee()
+    {
+        $report = $this->makeReport();
+
+        $this->actingAs($this->admin)
+            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'assign', 'assignee_id' => $this->otherAdmin->id])
+            ->assertOk();
+
+        $notification = $this->otherAdmin->notifications()->first();
+        $this->assertSame('Assigned to you: Login is broken', $notification->data['title']);
+        $this->assertSame('/reports/' . $report->uuid, $notification->data['url']);
+        $this->assertCount(0, $this->admin->notifications);
     }
 
     public function test_editing_a_report_sends_one_notification_listing_the_changes()
@@ -151,7 +176,7 @@ class NotificationTest extends TestCase
             'title' => 'Login is broken on Safari',
             'description' => 'Cannot log in',
             'priority' => 'urgent',
-            'status' => 'pending',
+            'status' => 'open',
         ])->assertOk();
 
         $notifications = $this->client->notifications()->get();
@@ -169,7 +194,7 @@ class NotificationTest extends TestCase
             'title' => 'Login is broken',
             'description' => 'Cannot log in',
             'priority' => 'high',
-            'status' => 'pending',
+            'status' => 'open',
         ])->assertOk();
 
         $this->assertCount(0, $this->client->notifications);
@@ -255,7 +280,7 @@ class NotificationTest extends TestCase
     {
         $report = $this->makeReport();
         $this->actingAs($this->admin)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'acknowledge'])
+            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'start_progress'])
             ->assertOk();
 
         $id = $this->client->notifications()->first()->id;

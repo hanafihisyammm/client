@@ -2,11 +2,12 @@ import { Head, Link, router } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusIcon, Users, FileText, Edit, Trash2, Eye, Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { PlusIcon, Users, FileText, Edit, Trash2, Eye, Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, FolderKanban, CheckCircle2, Clock, Loader2, XCircle, Briefcase } from 'lucide-react';
 
 interface User {
     id: number;
@@ -26,9 +27,9 @@ interface Project {
     creator: User;
     users: User[];
     reports_count: number;
-    pending_reports_count?: number;
+    open_reports_count?: number;
     in_progress_reports_count?: number;
-    approved_reports_count?: number;
+    resolved_reports_count?: number;
     closed_reports_count?: number;
 }
 
@@ -39,35 +40,113 @@ interface Props {
 type SortField = 'name' | 'status' | 'reports_count' | 'created_at'
 type SortOrder = 'asc' | 'desc'
 
+// Project avatar with initials
+function ProjectAvatar({ name }: { name: string }) {
+    const initials = name
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+
+    return (
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">
+            {initials}
+        </div>
+    );
+}
+
+// Status badge
+function StatusBadge({ status }: { status: string }) {
+    const config = {
+        active: {
+            label: 'Active',
+            className: 'bg-green-50 text-green-700 border-green-200',
+            dot: 'bg-green-500'
+        },
+        inactive: {
+            label: 'Inactive',
+            className: 'bg-gray-50 text-gray-600 border-gray-200',
+            dot: 'bg-gray-400'
+        },
+        completed: {
+            label: 'Completed',
+            className: 'bg-blue-50 text-blue-700 border-blue-200',
+            dot: 'bg-blue-500'
+        },
+    }[status] || {
+        label: status,
+        className: 'bg-gray-50 text-gray-600 border-gray-200',
+        dot: 'bg-gray-400'
+    };
+
+    return (
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${config.className}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${config.dot} ${status === 'active' ? 'animate-pulse' : ''}`} />
+            {config.label}
+        </span>
+    );
+}
+
+// Report status mini badge
+function ReportStatusBadge({ count, type }: { count: number; type: 'open' | 'in_progress' | 'resolved' | 'closed' }) {
+    if (count === 0) {
+        return <span className="text-gray-300">—</span>;
+    }
+
+    const config = {
+        open: { bg: 'bg-blue-100 text-blue-700', icon: Clock },
+        in_progress: { bg: 'bg-amber-100 text-amber-700', icon: Loader2 },
+        resolved: { bg: 'bg-purple-100 text-purple-700', icon: CheckCircle2 },
+        closed: { bg: 'bg-green-100 text-green-700', icon: XCircle },
+    }[type];
+
+    const Icon = config.icon;
+
+    return (
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${config.bg}`}>
+            <Icon className="w-3 h-3" />
+            {count}
+        </span>
+    );
+}
+
+// Stats card
+function StatsCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: number; color: string }) {
+    return (
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${color}`}>
+            <div className="p-2 rounded-lg bg-white shadow-sm">
+                <Icon className="w-4 h-4" />
+            </div>
+            <div>
+                <p className="text-2xl font-bold">{value}</p>
+                <p className="text-xs text-muted-foreground">{label}</p>
+            </div>
+        </div>
+    );
+}
+
 export default function ProjectIndex({ projects }: Props) {
-    const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+    const [deleteProject, setDeleteProject] = useState<Project | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [sortField, setSortField] = useState<SortField>('created_at');
     const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+    const [deleting, setDeleting] = useState(false);
 
-    const formatStatus = (status: string) => {
-        return status.charAt(0).toUpperCase() + status.slice(1);
-    };
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'active':
-                return 'bg-green-100 text-green-800';
-            case 'inactive':
-                return 'bg-gray-100 text-gray-800';
-            case 'completed':
-                return 'bg-blue-100 text-blue-800';
-            default:
-                return 'bg-gray-100 text-gray-800';
-        }
-    };
-
-    const handleDelete = (projectId: number) => {
-        router.delete(`/projects/${projectId}`, {
-            onSuccess: () => setDeleteConfirm(null),
+    const handleDelete = () => {
+        if (!deleteProject) return;
+        setDeleting(true);
+        router.delete(`/projects/${deleteProject.id}`, {
+            onSuccess: () => {
+                setDeleteProject(null);
+                setDeleting(false);
+            },
+            onError: () => {
+                setDeleting(false);
+            }
         });
     };
 
@@ -85,7 +164,7 @@ export default function ProjectIndex({ projects }: Props) {
             const created = new Date(project.created_at);
             const createdDate = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`;
             const matchesDate = (!dateFrom || createdDate >= dateFrom) && (!dateTo || createdDate <= dateTo);
-            
+
             return matchesSearch && matchesStatus && matchesDate;
         });
 
@@ -119,6 +198,13 @@ export default function ProjectIndex({ projects }: Props) {
         });
     }, [projects, searchQuery, statusFilter, dateFrom, dateTo, sortField, sortOrder]);
 
+    // Stats
+    const stats = useMemo(() => ({
+        total: projects.length,
+        active: projects.filter(p => p.status === 'active').length,
+        totalReports: projects.reduce((sum, p) => sum + (p.reports_count || 0), 0),
+    }), [projects]);
+
     const handleSort = (field: SortField) => {
         const newOrder = sortField === field && sortOrder === 'asc' ? 'desc' : 'asc';
         setSortField(field);
@@ -127,48 +213,71 @@ export default function ProjectIndex({ projects }: Props) {
 
     const getSortIcon = (field: SortField) => {
         if (sortField !== field) {
-            return <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />;
+            return <ChevronsUpDown className="ml-1 h-3.5 w-3.5 opacity-50" />;
         }
-        return sortOrder === 'asc' ? 
-            <ChevronUp className="ml-2 h-4 w-4" /> : 
-            <ChevronDown className="ml-2 h-4 w-4" />;
+        return sortOrder === 'asc' ?
+            <ChevronUp className="ml-1 h-3.5 w-3.5" /> :
+            <ChevronDown className="ml-1 h-3.5 w-3.5" />;
     };
-
 
     return (
         <AppLayout>
             <Head title="Projects" />
 
-            <div className="space-y-6 px-4 py-2">
-                <div className="flex items-center justify-between">
+            <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-start justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold">Project Management</h1>
-                        <p className="text-muted-foreground mt-1">
+                        <h1 className="text-2xl font-semibold tracking-tight">Project Management</h1>
+                        <p className="text-muted-foreground text-sm mt-1">
                             Manage projects and track their progress
                         </p>
                     </div>
                     <Link href="/projects/create">
-                        <Button>
+                        <Button className="shadow-sm">
                             <PlusIcon className="h-4 w-4 mr-2" />
                             Create Project
                         </Button>
                     </Link>
                 </div>
 
-                <div className="flex flex-wrap gap-4">
-                    <div className="flex items-center space-x-2">
-                        <Search className="w-4 h-4 text-muted-foreground" />
+                {/* Stats Cards */}
+                <div className="grid grid-cols-3 gap-4">
+                    <StatsCard
+                        icon={FolderKanban}
+                        label="Total Projects"
+                        value={stats.total}
+                        color="bg-slate-50 border-slate-200"
+                    />
+                    <StatsCard
+                        icon={Briefcase}
+                        label="Active Projects"
+                        value={stats.active}
+                        color="bg-green-50 border-green-200"
+                    />
+                    <StatsCard
+                        icon={FileText}
+                        label="Total Reports"
+                        value={stats.totalReports}
+                        color="bg-blue-50 border-blue-200"
+                    />
+                </div>
+
+                {/* Filters */}
+                <div className="flex items-center gap-3">
+                    <div className="relative flex-1 max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
                             placeholder="Search projects..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-64"
+                            className="pl-9"
                         />
                     </div>
-                    
+
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-48">
-                            <SelectValue placeholder="Filter by status" />
+                        <SelectTrigger className="w-40">
+                            <SelectValue placeholder="All Status" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Status</SelectItem>
@@ -196,171 +305,246 @@ export default function ProjectIndex({ projects }: Props) {
                             onChange={(e) => setDateTo(e.target.value)}
                             className="w-40"
                         />
-                        {(dateFrom || dateTo) && (
-                            <Button variant="ghost" size="sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>
-                                Clear dates
-                            </Button>
-                        )}
                     </div>
+
+                    {(searchQuery || statusFilter !== 'all' || dateFrom || dateTo) && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                setSearchQuery('');
+                                setStatusFilter('all');
+                                setDateFrom('');
+                                setDateTo('');
+                            }}
+                            className="text-muted-foreground"
+                        >
+                            Clear filters
+                        </Button>
+                    )}
                 </div>
 
-                <div className="bg-white shadow-sm border rounded-lg">
+                {/* Results count */}
+                {filteredAndSortedProjects.length !== projects.length && (
+                    <p className="text-sm text-muted-foreground">
+                        Showing {filteredAndSortedProjects.length} of {projects.length} projects
+                    </p>
+                )}
+
+                {/* Table */}
+                <div className="bg-white shadow-sm border rounded-xl overflow-hidden">
                     <Table>
                         <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-32">Actions</TableHead>
-                                <TableHead>
-                                    <Button 
-                                        variant="ghost" 
-                                        className="h-auto p-0 font-semibold hover:bg-transparent"
+                            <TableRow className="bg-slate-50/50">
+                                <TableHead className="w-[280px]">
+                                    <Button
+                                        variant="ghost"
+                                        className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent text-muted-foreground"
                                         onClick={() => handleSort('name')}
                                     >
-                                        Project Name
+                                        Project
                                         {getSortIcon('name')}
                                     </Button>
                                 </TableHead>
-                                <TableHead>Description</TableHead>
                                 <TableHead>
-                                    <Button 
-                                        variant="ghost" 
-                                        className="h-auto p-0 font-semibold hover:bg-transparent"
+                                    <Button
+                                        variant="ghost"
+                                        className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent text-muted-foreground"
                                         onClick={() => handleSort('status')}
                                     >
                                         Status
                                         {getSortIcon('status')}
                                     </Button>
                                 </TableHead>
-                                <TableHead>Clients</TableHead>
-                                <TableHead>Pending</TableHead>
-                                <TableHead>In Progress</TableHead>
-                                <TableHead>Approved</TableHead>
-                                <TableHead>Closed</TableHead>
+                                <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground text-center">
+                                    Clients
+                                </TableHead>
+                                <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground text-center" colSpan={4}>
+                                    Report Status
+                                </TableHead>
                                 <TableHead>
-                                    <Button 
-                                        variant="ghost" 
-                                        className="h-auto p-0 font-semibold hover:bg-transparent"
+                                    <Button
+                                        variant="ghost"
+                                        className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent text-muted-foreground"
                                         onClick={() => handleSort('reports_count')}
                                     >
-                                        Total Reports
+                                        Total
                                         {getSortIcon('reports_count')}
                                     </Button>
                                 </TableHead>
                                 <TableHead>
-                                    <Button 
-                                        variant="ghost" 
-                                        className="h-auto p-0 font-semibold hover:bg-transparent"
+                                    <Button
+                                        variant="ghost"
+                                        className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent text-muted-foreground"
                                         onClick={() => handleSort('created_at')}
                                     >
                                         Created
                                         {getSortIcon('created_at')}
                                     </Button>
                                 </TableHead>
+                                <TableHead className="w-[50px]"></TableHead>
+                            </TableRow>
+                            <TableRow className="bg-slate-50/30 border-b">
+                                <TableHead></TableHead>
+                                <TableHead></TableHead>
+                                <TableHead></TableHead>
+                                <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">Open</TableHead>
+                                <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">In Progress</TableHead>
+                                <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">Resolved</TableHead>
+                                <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">Closed</TableHead>
+                                <TableHead></TableHead>
+                                <TableHead></TableHead>
+                                <TableHead></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredAndSortedProjects.length === 0 && (
+                            {filteredAndSortedProjects.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={11} className="py-10 text-center text-gray-500">
-                                        No projects match these filters
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {filteredAndSortedProjects.map((project) => (
-                                <TableRow 
-                                    key={project.id}
-                                    className="hover:bg-gray-50"
-                                >
-                                    <TableCell>
-                                        <div className="flex items-center gap-1">
-                                            <Button 
-                                                variant="ghost" 
-                                                size="sm"
-                                                onClick={() => handleView(project.uuid)}
-                                                title="View project details, reports and clients"
-                                            >
-                                                <Eye className="h-4 w-4" />
-                                            </Button>
-                                            <Link href={`/projects/${project.uuid}/edit`}>
-                                                <Button variant="ghost" size="sm" title="Edit project">
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            {deleteConfirm === project.id ? (
-                                                <div className="flex gap-1">
-                                                    <Button
-                                                        variant="destructive"
-                                                        size="sm"
-                                                        onClick={() => handleDelete(project.id)}
-                                                    >
-                                                        ✓
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => setDeleteConfirm(null)}
-                                                    >
-                                                        ✗
-                                                    </Button>
-                                                </div>
-                                            ) : (
+                                    <TableCell colSpan={10} className="h-32 text-center">
+                                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                                            <FolderKanban className="h-8 w-8 opacity-50" />
+                                            <p>No projects found</p>
+                                            {(searchQuery || statusFilter !== 'all' || dateFrom || dateTo) && (
                                                 <Button
-                                                    variant="ghost"
+                                                    variant="link"
                                                     size="sm"
-                                                    onClick={() => setDeleteConfirm(project.id)}
-                                                    className="text-red-600 hover:text-red-700"
-                                                    title="Delete project"
+                                                    onClick={() => {
+                                                        setSearchQuery('');
+                                                        setStatusFilter('all');
+                                                    }}
                                                 >
-                                                    <Trash2 className="h-4 w-4" />
+                                                    Clear filters
                                                 </Button>
                                             )}
                                         </div>
                                     </TableCell>
-                                    <TableCell className="font-medium">
-                                        {project.name}
-                                    </TableCell>
-                                    <TableCell className="max-w-xs">
-                                        <div className="truncate">
-                                            {project.description || '-'}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge className={getStatusColor(project.status)}>
-                                            {formatStatus(project.status || 'active')}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center gap-1">
-                                            <Users className="w-4 h-4 text-gray-400" />
-                                            {project.users.length}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        {project.pending_reports_count || 0}
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        {project.in_progress_reports_count || 0}
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        {project.approved_reports_count || 0}
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        {project.closed_reports_count || 0}
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center gap-1">
-                                            <FileText className="w-4 h-4 text-gray-400" />
-                                            {project.reports_count}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-sm text-gray-600 whitespace-nowrap">
-                                        {new Date(project.created_at).toLocaleDateString()}
-                                    </TableCell>
                                 </TableRow>
-                            ))}
+                            ) : (
+                                filteredAndSortedProjects.map((project) => (
+                                    <TableRow
+                                        key={project.id}
+                                        className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
+                                        onClick={() => handleView(project.uuid)}
+                                    >
+                                        <TableCell>
+                                            <div className="flex items-center gap-3">
+                                                <ProjectAvatar name={project.name} />
+                                                <div className="min-w-0">
+                                                    <p className="font-medium text-gray-900 truncate">
+                                                        {project.name}
+                                                    </p>
+                                                    <p className="text-sm text-muted-foreground truncate max-w-[200px]">
+                                                        {project.description || 'No description'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <StatusBadge status={project.status || 'active'} />
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center justify-center gap-1.5">
+                                                <Users className="w-4 h-4 text-muted-foreground" />
+                                                <span className="font-medium">{project.users.length}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <ReportStatusBadge count={project.open_reports_count || 0} type="open" />
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <ReportStatusBadge count={project.in_progress_reports_count || 0} type="in_progress" />
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <ReportStatusBadge count={project.resolved_reports_count || 0} type="resolved" />
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <ReportStatusBadge count={project.closed_reports_count || 0} type="closed" />
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-1.5">
+                                                <FileText className="w-4 h-4 text-muted-foreground" />
+                                                <span className="font-medium">{project.reports_count}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                                            {new Date(project.created_at).toLocaleDateString()}
+                                        </TableCell>
+                                        <TableCell onClick={(e) => e.stopPropagation()}>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0"
+                                                    >
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-48">
+                                                    <DropdownMenuItem
+                                                        onClick={() => handleView(project.uuid)}
+                                                        className="cursor-pointer"
+                                                    >
+                                                        <Eye className="mr-2 h-4 w-4" />
+                                                        View Project
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem asChild>
+                                                        <Link href={`/projects/${project.uuid}/edit`} className="flex items-center cursor-pointer">
+                                                            <Edit className="mr-2 h-4 w-4" />
+                                                            Edit Project
+                                                        </Link>
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem
+                                                        onClick={() => setDeleteProject(project)}
+                                                        className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+                                                    >
+                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                        Delete Project
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
                         </TableBody>
-                        </Table>
-                    </div>
+                    </Table>
                 </div>
+            </div>
+
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={!!deleteProject} onOpenChange={() => setDeleteProject(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <div className="mx-auto w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                            <Trash2 className="h-6 w-6 text-red-600" />
+                        </div>
+                        <DialogTitle className="text-center">Delete Project</DialogTitle>
+                        <DialogDescription className="text-center">
+                            Are you sure you want to delete <span className="font-medium text-gray-900">{deleteProject?.name}</span>?
+                            This will also delete all associated reports and data. This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex gap-3 mt-6">
+                        <Button
+                            variant="outline"
+                            onClick={() => setDeleteProject(null)}
+                            className="flex-1"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleDelete}
+                            disabled={deleting}
+                            className="flex-1"
+                        >
+                            {deleting ? 'Deleting...' : 'Delete Project'}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }

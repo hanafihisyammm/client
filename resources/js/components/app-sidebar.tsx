@@ -19,7 +19,7 @@ import AppLogo from './app-logo';
 // Base navigation items available to all users
 const baseNavItems: NavItem[] = [
     {
-        title: 'Reports',
+        title: 'Issues',
         href: dashboard(),
         icon: FileText,
     },

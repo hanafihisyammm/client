@@ -31,7 +31,7 @@ export default function Welcome() {
                             <nav className="flex items-center space-x-4">
                                 {auth.user ? (
                                     <Link href={dashboard()} className={`${goldButton} px-4 py-2.5 text-sm`}>
-                                        Go to Reports
+                                        Go to Issues
                                         <ArrowRight className="ml-2 h-4 w-4" />
                                     </Link>
                                 ) : (

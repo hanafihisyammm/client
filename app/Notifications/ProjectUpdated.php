@@ -34,7 +34,7 @@ class ProjectUpdated extends AppNotification
                 'Updated by' => $this->nameWithRole($this->updatedBy),
                 ...$this->formatChanges(),
             ],
-            $notifiable->isAdmin() ? 'View Project' : 'Open Reports',
+            $notifiable->isAdmin() ? 'View Project' : 'Open Issues',
             $this->urlFor($notifiable)
         );
     }

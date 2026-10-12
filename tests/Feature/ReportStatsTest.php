@@ -31,12 +31,12 @@ class ReportStatsTest extends TestCase
         $theirs = Project::create(['name' => 'Mobile App', 'status' => 'active', 'created_by' => $this->admin->id]);
         $theirs->users()->attach($this->otherClient->id, ['role' => 'member', 'assigned_by' => $this->admin->id, 'assigned_at' => now()]);
 
-        $this->makeReport($mine, $this->client, 'pending');
-        $this->makeReport($mine, $this->client, 'pending', now()->subDays(2));
-        $this->makeReport($mine, $this->client, 'in_progress', now()->addDays(5));
-        $this->makeReport($mine, $this->client, 'submit_for_review', now()->subDay());
-        $this->makeReport($mine, $this->client, 'approved', now()->subDays(10));
-        $this->makeReport($theirs, $this->otherClient, 'rejected');
+        $this->makeReport($mine, $this->client, 'open');
+        $this->makeReport($mine, $this->client, 'open', now()->subDays(2));
+        $this->makeReport($mine, $this->client, 'in_progress', now()->subDay());
+        $this->makeReport($mine, $this->client, 'resolved', now()->subDay());
+        $this->makeReport($mine, $this->client, 'closed', now()->subDays(10));
+        $this->makeReport($theirs, $this->otherClient, 'reopened');
         $this->makeReport($theirs, $this->otherClient, 'closed', now()->subDays(3));
     }
 
@@ -58,10 +58,10 @@ class ReportStatsTest extends TestCase
         $this->actingAs($this->admin)->get('/dashboard')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page->where('stats', [
-                'pending' => 2,
+                'open' => 2,
                 'in_progress' => 1,
-                'submit_for_review' => 1,
-                'rejected' => 1,
+                'resolved' => 1,
+                'reopened' => 1,
                 'overdue' => 2,
             ]));
     }
@@ -70,18 +70,18 @@ class ReportStatsTest extends TestCase
     {
         $this->actingAs($this->otherClient)->get('/dashboard')
             ->assertInertia(fn (Assert $page) => $page->where('stats', [
-                'pending' => 0,
+                'open' => 0,
                 'in_progress' => 0,
-                'submit_for_review' => 0,
-                'rejected' => 1,
+                'resolved' => 0,
+                'reopened' => 1,
                 'overdue' => 0,
             ]));
     }
 
     public function test_counts_ignore_the_table_filters()
     {
-        $this->actingAs($this->admin)->get('/dashboard?status=approved')
-            ->assertInertia(fn (Assert $page) => $page->where('stats.pending', 2));
+        $this->actingAs($this->admin)->get('/dashboard?status=closed')
+            ->assertInertia(fn (Assert $page) => $page->where('stats.open', 2));
     }
 
     public function test_the_report_list_can_be_limited_to_overdue_reports()
@@ -89,7 +89,7 @@ class ReportStatsTest extends TestCase
         $response = $this->actingAs($this->admin)->getJson('/api/reports?overdue=1')->assertOk();
 
         $this->assertEqualsCanonicalizing(
-            ['pending', 'submit_for_review'],
+            ['open', 'in_progress'],
             collect($response->json('data'))->pluck('status')->all()
         );
     }

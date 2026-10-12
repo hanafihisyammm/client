@@ -1,23 +1,47 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, useForm, router } from '@inertiajs/react';
 import { FormEventHandler, useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft } from 'lucide-react';
+import {
+    ArrowLeft, FolderKanban, Users, CheckCircle2, Clock, Archive,
+    Search, UserPlus, Check
+} from 'lucide-react';
 
 interface User {
     id: number;
     name: string;
     email: string;
+    role?: string;
 }
 
 interface Props {
     clients: User[];
+}
+
+const statusOptions = [
+    { value: 'active', label: 'Active', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
+    { value: 'inactive', label: 'Inactive', icon: Clock, color: 'text-gray-600', bg: 'bg-gray-50' },
+    { value: 'completed', label: 'Completed', icon: Archive, color: 'text-blue-600', bg: 'bg-blue-50' },
+];
+
+const roleColors: Record<string, string> = {
+    super_admin: 'bg-gradient-to-br from-red-500 to-rose-600',
+    admin: 'bg-gradient-to-br from-blue-500 to-indigo-600',
+    manager: 'bg-gradient-to-br from-purple-500 to-violet-600',
+    developer: 'bg-gradient-to-br from-emerald-500 to-teal-600',
+    client: 'bg-gradient-to-br from-amber-500 to-orange-600',
+};
+
+function generatePrefix(name: string): string {
+    if (!name.trim()) return 'PROJ';
+    const words = name.trim().split(/[\s\-_]+/).filter(w => w.length > 0);
+    if (words.length === 1) {
+        return words[0].substring(0, 4).toUpperCase();
+    }
+    return words.slice(0, 4).map(w => w[0]).join('').toUpperCase() || 'PROJ';
 }
 
 export default function ProjectCreate({ clients }: Props) {
@@ -28,152 +52,290 @@ export default function ProjectCreate({ clients }: Props) {
         client_ids: [] as number[],
     });
 
-    const [selectedClients, setSelectedClients] = useState<number[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
 
-    const handleClientToggle = (clientId: number) => {
-        const newSelectedClients = selectedClients.includes(clientId)
-            ? selectedClients.filter(id => id !== clientId)
-            : [...selectedClients, clientId];
-        
-        setSelectedClients(newSelectedClients);
-        setData('client_ids', newSelectedClients);
+    const prefix = generatePrefix(data.name);
+    const selectedStatus = statusOptions.find(s => s.value === data.status) || statusOptions[0];
+
+    const filteredClients = searchQuery.trim()
+        ? clients.filter(c =>
+            c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            c.email.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+        : clients;
+
+    const toggleClient = (clientId: number) => {
+        const current = [...data.client_ids];
+        const index = current.indexOf(clientId);
+        if (index > -1) {
+            current.splice(index, 1);
+        } else {
+            current.push(clientId);
+        }
+        setData('client_ids', current);
     };
+
+    const isClientSelected = (clientId: number) => data.client_ids.includes(clientId);
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        
-        // Client-side validation
         if (!data.name.trim()) {
             alert('Project name is required');
             return;
         }
-        
-        if (selectedClients.length === 0) {
-            alert('At least one client must be assigned to the project');
+        if (data.client_ids.length === 0) {
+            alert('At least one member must be assigned');
             return;
         }
-        
         post('/projects');
     };
 
     return (
         <AppLayout>
             <Head title="Create Project" />
-            
-            <div className="max-w-4xl mx-auto sm:px-6 lg:px-8">
-                <div className="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div className="p-6">
-                        <div className="flex items-center gap-4 mb-6">
-                            <Link href="/projects">
-                                <Button variant="outline" size="sm">
-                                    <ArrowLeft className="w-4 h-4" />
-                                </Button>
-                            </Link>
-                            <h1 className="text-2xl font-semibold text-gray-900">Create Project</h1>
-                        </div>
 
-                        <form onSubmit={submit}>
-                            <div className="space-y-6">
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Project Details</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <div>
-                                            <Label htmlFor="name">Project Name *</Label>
-                                            <Input
-                                                id="name"
-                                                type="text"
-                                                value={data.name}
-                                                onChange={(e) => setData('name', e.target.value)}
-                                                placeholder="Enter project name"
-                                                className="mt-1"
-                                                required
-                                            />
-                                            {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
-                                        </div>
-
-                                        <div>
-                                            <Label htmlFor="description">Description</Label>
-                                            <Textarea
-                                                id="description"
-                                                value={data.description}
-                                                onChange={(e) => setData('description', e.target.value)}
-                                                placeholder="Enter project description (optional)"
-                                                className="mt-1"
-                                                rows={3}
-                                            />
-                                            {errors.description && <p className="text-red-600 text-sm mt-1">{errors.description}</p>}
-                                        </div>
-
-                                        <div>
-                                            <Label htmlFor="status">Status *</Label>
-                                            <Select value={data.status} onValueChange={(value) => setData('status', value)} required>
-                                                <SelectTrigger className="mt-1">
-                                                    <SelectValue placeholder="Select status" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="active">Active</SelectItem>
-                                                    <SelectItem value="inactive">Inactive</SelectItem>
-                                                    <SelectItem value="completed">Completed</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            {errors.status && <p className="text-red-600 text-sm mt-1">{errors.status}</p>}
-                                        </div>
-
-                                    </CardContent>
-                                </Card>
-
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Assign Clients *</CardTitle>
-                                        <p className="text-sm text-gray-600">
-                                            Select which clients should have access to this project
-                                        </p>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {clients.length === 0 ? (
-                                            <p className="text-gray-500">No clients available</p>
-                                        ) : (
-                                            <div className="space-y-3 max-h-64 overflow-y-auto">
-                                                {clients.map((client) => (
-                                                    <div key={client.id} className="flex items-center space-x-3">
-                                                        <Checkbox
-                                                            id={`client-${client.id}`}
-                                                            checked={selectedClients.includes(client.id)}
-                                                            onCheckedChange={() => handleClientToggle(client.id)}
-                                                        />
-                                                        <Label 
-                                                            htmlFor={`client-${client.id}`}
-                                                            className="flex-1 cursor-pointer"
-                                                        >
-                                                            <div>
-                                                                <p className="font-medium">{client.name}</p>
-                                                                <p className="text-sm text-gray-500">{client.email}</p>
-                                                            </div>
-                                                        </Label>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                        {errors.client_ids && <p className="text-red-600 text-sm mt-2">{errors.client_ids}</p>}
-                                    </CardContent>
-                                </Card>
-
-                                <div className="flex items-center gap-4">
-                                    <Button type="submit" disabled={processing}>
-                                        {processing ? 'Creating...' : 'Create Project'}
-                                    </Button>
-                                    <Link href="/projects">
-                                        <Button variant="outline" type="button">
-                                            Cancel
-                                        </Button>
-                                    </Link>
-                                </div>
-                            </div>
-                        </form>
+            <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" size="sm" onClick={() => router.get('/projects')}>
+                        <ArrowLeft className="w-4 h-4 mr-2" />
+                        Back
+                    </Button>
+                    <div>
+                        <h1 className="text-2xl font-semibold tracking-tight">Create Project</h1>
+                        <p className="text-muted-foreground text-sm mt-1">Set up a new project and assign team members</p>
                     </div>
                 </div>
+
+                <form onSubmit={submit}>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Left Column */}
+                        <div className="lg:col-span-2 space-y-6">
+                            {/* Project Details */}
+                            <div className="bg-white border rounded-xl p-6 space-y-5">
+                                <div className="flex items-center gap-3 pb-4 border-b">
+                                    <div className="p-2 bg-indigo-50 rounded-lg">
+                                        <FolderKanban className="w-5 h-5 text-indigo-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="font-medium text-gray-900">Project Details</h2>
+                                        <p className="text-sm text-gray-500">Basic information about your project</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="name">Project Name <span className="text-red-500">*</span></Label>
+                                    <Input
+                                        id="name"
+                                        value={data.name}
+                                        onChange={(e) => setData('name', e.target.value)}
+                                        placeholder="e.g., Website Redesign"
+                                        className="h-11"
+                                    />
+                                    {data.name && (
+                                        <p className="text-xs text-gray-500">
+                                            Prefix: <span className="font-mono font-medium text-indigo-600">{prefix}</span>
+                                        </p>
+                                    )}
+                                    {errors.name && <p className="text-red-600 text-sm">{errors.name}</p>}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="description">Description</Label>
+                                    <Textarea
+                                        id="description"
+                                        value={data.description}
+                                        onChange={(e) => setData('description', e.target.value)}
+                                        placeholder="Project scope and objectives..."
+                                        rows={4}
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Status</Label>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {statusOptions.map((option) => {
+                                            const Icon = option.icon;
+                                            const isActive = data.status === option.value;
+                                            return (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => setData('status', option.value)}
+                                                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                                                        isActive
+                                                            ? 'border-indigo-500 bg-indigo-50'
+                                                            : 'border-gray-200 hover:border-gray-300'
+                                                    }`}
+                                                >
+                                                    <div className={`p-2 rounded-lg ${isActive ? 'bg-indigo-100' : option.bg}`}>
+                                                        <Icon className={`w-5 h-5 ${isActive ? 'text-indigo-600' : option.color}`} />
+                                                    </div>
+                                                    <span className={`text-sm font-medium ${isActive ? 'text-indigo-900' : 'text-gray-700'}`}>
+                                                        {option.label}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Team Members */}
+                            <div className="bg-white border rounded-xl p-6 space-y-5">
+                                <div className="flex items-center justify-between pb-4 border-b">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-amber-50 rounded-lg">
+                                            <Users className="w-5 h-5 text-amber-600" />
+                                        </div>
+                                        <div>
+                                            <h2 className="font-medium text-gray-900">Team Members <span className="text-red-500">*</span></h2>
+                                            <p className="text-sm text-gray-500">Assign users to this project</p>
+                                        </div>
+                                    </div>
+                                    {data.client_ids.length > 0 && (
+                                        <span className="text-sm font-medium text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
+                                            {data.client_ids.length} selected
+                                        </span>
+                                    )}
+                                </div>
+
+                                {clients.length > 5 && (
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                        <Input
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            placeholder="Search users..."
+                                            className="pl-10"
+                                        />
+                                    </div>
+                                )}
+
+                                {clients.length === 0 ? (
+                                    <div className="text-center py-8">
+                                        <UserPlus className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                                        <p className="text-gray-500">No users available</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 max-h-72 overflow-y-auto">
+                                        {filteredClients.map((client) => {
+                                            const selected = isClientSelected(client.id);
+                                            const role = client.role || 'client';
+                                            return (
+                                                <div
+                                                    key={client.id}
+                                                    onClick={() => toggleClient(client.id)}
+                                                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                                                        selected
+                                                            ? 'border-indigo-300 bg-indigo-50'
+                                                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                                                        selected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'
+                                                    }`}>
+                                                        {selected && <Check className="w-3 h-3 text-white" />}
+                                                    </div>
+                                                    <div className={`w-9 h-9 rounded-full ${roleColors[role]} flex items-center justify-center text-white text-sm font-medium`}>
+                                                        {client.name.charAt(0)}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-medium text-gray-900 truncate">{client.name}</p>
+                                                        <p className="text-sm text-gray-500 truncate">{client.email}</p>
+                                                    </div>
+                                                    <span className={`text-xs px-2 py-1 rounded-full capitalize ${
+                                                        role === 'client' ? 'bg-amber-100 text-amber-700' :
+                                                        role === 'developer' ? 'bg-emerald-100 text-emerald-700' :
+                                                        role === 'manager' ? 'bg-purple-100 text-purple-700' :
+                                                        'bg-gray-100 text-gray-700'
+                                                    }`}>
+                                                        {role.replace('_', ' ')}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                {errors.client_ids && <p className="text-red-600 text-sm">{errors.client_ids}</p>}
+                            </div>
+                        </div>
+
+                        {/* Right Column */}
+                        <div className="space-y-6">
+                            {/* Preview */}
+                            <div className="bg-white border rounded-xl p-6">
+                                <h3 className="font-medium text-gray-900 mb-4">Preview</h3>
+                                <div className="p-4 bg-gray-50 rounded-lg border space-y-3">
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                                            {prefix.substring(0, 2)}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-gray-900">{data.name || 'Project Name'}</p>
+                                            <p className="text-xs font-mono text-gray-500">{prefix}</p>
+                                        </div>
+                                    </div>
+                                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${selectedStatus.bg} ${selectedStatus.color}`}>
+                                        <selectedStatus.icon className="w-3 h-3" />
+                                        {selectedStatus.label}
+                                    </div>
+                                    {data.client_ids.length > 0 && (
+                                        <div className="pt-2 border-t">
+                                            <p className="text-xs text-gray-500 mb-2">Team ({data.client_ids.length})</p>
+                                            <div className="flex -space-x-2">
+                                                {data.client_ids.slice(0, 5).map((id) => {
+                                                    const c = clients.find(x => x.id === id);
+                                                    if (!c) return null;
+                                                    return (
+                                                        <div
+                                                            key={id}
+                                                            className={`w-7 h-7 rounded-full ${roleColors[c.role || 'client']} flex items-center justify-center text-white text-xs font-medium border-2 border-white`}
+                                                        >
+                                                            {c.name.charAt(0)}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {data.client_ids.length > 5 && (
+                                                    <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-600 border-2 border-white">
+                                                        +{data.client_ids.length - 5}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Info */}
+                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                                <h4 className="font-medium text-blue-900 mb-2">Project Prefix</h4>
+                                <p className="text-sm text-blue-700">
+                                    Issues will use <span className="font-mono font-semibold">{prefix}-1</span>, <span className="font-mono font-semibold">{prefix}-2</span>, etc.
+                                </p>
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="space-y-3">
+                                <Button
+                                    type="submit"
+                                    disabled={processing || !data.name.trim() || data.client_ids.length === 0}
+                                    className="w-full h-11"
+                                >
+                                    {processing ? 'Creating...' : 'Create Project'}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => router.get('/projects')}
+                                    className="w-full h-11"
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
             </div>
         </AppLayout>
     );

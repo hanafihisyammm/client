@@ -15,6 +15,13 @@ class UserSeeder extends Seeder
     {
         $users = [
             [
+                'name' => 'Hanafi',
+                'email' => 'hanafi@sidracore.com',
+                'password' => Hash::make('password'),
+                'role' => 'super_admin',
+                'email_verified_at' => now(),
+            ],
+            [
                 'name' => 'Admin User',
                 'email' => 'admin@example.com',
                 'password' => Hash::make('password'),
@@ -22,24 +29,24 @@ class UserSeeder extends Seeder
                 'email_verified_at' => now(),
             ],
             [
-                'name' => 'John Admin',
-                'email' => 'developer@example.com',
+                'name' => 'Manager User',
+                'email' => 'manager@example.com',
                 'password' => Hash::make('password'),
-                'role' => 'admin',
+                'role' => 'manager',
                 'email_verified_at' => now(),
             ],
             [
-                'name' => 'Jane Client',
+                'name' => 'Developer User',
+                'email' => 'developer@example.com',
+                'password' => Hash::make('password'),
+                'role' => 'developer',
+                'email_verified_at' => now(),
+            ],
+            [
+                'name' => 'Client User',
                 'email' => 'client@example.com',
                 'password' => Hash::make('password'),
                 'role' => 'client',
-                'email_verified_at' => now(),
-            ],
-            [
-                'name' => 'Another Admin',
-                'email' => 'dev2@example.com',
-                'password' => Hash::make('password'),
-                'role' => 'admin',
                 'email_verified_at' => now(),
             ],
         ];

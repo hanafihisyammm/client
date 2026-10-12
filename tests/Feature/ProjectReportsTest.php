@@ -28,7 +28,7 @@ class ProjectReportsTest extends TestCase
             'project_id' => $project->id,
             'priority' => 'high',
             'reported_by' => $client->id,
-            'status' => 'pending',
+            'status' => 'open',
         ]);
 
         $this->actingAs($admin)->get('/projects/view/' . $project->uuid)

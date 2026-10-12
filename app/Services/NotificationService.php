@@ -10,6 +10,7 @@ use App\Notifications\AccountCreated;
 use App\Notifications\CommentAdded;
 use App\Notifications\ProjectAssigned;
 use App\Notifications\ProjectUpdated;
+use App\Notifications\ReportAssigned;
 use App\Notifications\ReportCreated;
 use App\Notifications\ReportDeleted;
 use App\Notifications\ReportStatusChanged;
@@ -114,14 +115,15 @@ class NotificationService
 
     /**
      * Everyone involved in a project except the person who acted:
-     * all admins and super admins, plus the clients assigned to the project.
+     * all admins and super admins, plus everyone assigned to the project.
      */
-    private function getProjectRecipients(?Project $project, User $actor, ?int $reporterId = null): Collection
+    private function getProjectRecipients(?Project $project, User $actor, array $alsoNotifyIds = []): Collection
     {
         $projectId = $project?->id;
+        $alsoNotifyIds = array_values(array_filter($alsoNotifyIds));
 
         return User::where('id', '!=', $actor->id)
-            ->where(function ($query) use ($projectId, $reporterId) {
+            ->where(function ($query) use ($projectId, $alsoNotifyIds) {
                 $query->whereIn('role', ['admin', 'super_admin'])
                     ->orWhereIn('id', function ($sub) use ($projectId) {
                         $sub->select('user_id')
@@ -129,19 +131,34 @@ class NotificationService
                             ->where('project_id', $projectId);
                     });
 
-                if ($reporterId) {
-                    $query->orWhere('id', $reporterId);
+                if ($alsoNotifyIds) {
+                    $query->orWhereIn('id', $alsoNotifyIds);
                 }
             })
             ->get();
     }
 
     /**
+     * Notify a user when they are assigned to a report.
+     */
+    public function notifyReportAssigned(Report $report, User $assignedBy, User $assignee): void
+    {
+        // Don't notify if assigning to self
+        if ($assignedBy->id === $assignee->id) {
+            return;
+        }
+
+        $report->load('project');
+
+        $assignee->notify(new ReportAssigned($report, $assignedBy));
+    }
+
+    /**
      * Everyone involved in a report except the person who acted:
-     * the project's audience plus the reporter, even if they have since left the project.
+     * the project's audience plus the reporter and the assignee, even if they are not on the project.
      */
     private function getReportRecipients(Report $report, User $actor): Collection
     {
-        return $this->getProjectRecipients($report->project, $actor, $report->reported_by);
+        return $this->getProjectRecipients($report->project, $actor, [$report->reported_by, $report->assigned_to]);
     }
 }

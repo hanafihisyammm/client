@@ -11,7 +11,7 @@ class UserPolicy
      */
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, ['super_admin', 'admin']);
+        return in_array($user->role, ['super_admin', 'admin', 'manager']);
     }
 
     /**
@@ -19,7 +19,7 @@ class UserPolicy
      */
     public function view(User $user, User $model): bool
     {
-        return in_array($user->role, ['super_admin', 'admin']);
+        return in_array($user->role, ['super_admin', 'admin', 'manager']);
     }
 
     /**
@@ -92,14 +92,14 @@ class UserPolicy
      */
     public function createRole(User $user, string $role): bool
     {
-        // Super admin can create any role
+        // Super admin can create any role except super_admin
         if ($user->role === 'super_admin') {
-            return true;
+            return in_array($role, ['admin', 'manager', 'developer', 'client']);
         }
 
-        // Admin can only create clients
+        // Admin can create manager, developer, and client
         if ($user->role === 'admin') {
-            return $role === 'client';
+            return in_array($role, ['manager', 'developer', 'client']);
         }
 
         return false;
