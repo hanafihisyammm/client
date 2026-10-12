@@ -94,10 +94,7 @@ class AuditLogTest extends TestCase
         AuditLog::query()->delete();
 
         $this->actingAs($superAdmin)->post('/users', [
-            'name' => 'New Client',
             'email' => 'new.client@example.com',
-            'password' => 'Str0ng-Passw0rd!',
-            'password_confirmation' => 'Str0ng-Passw0rd!',
             'role' => 'client',
         ])->assertRedirect();
 

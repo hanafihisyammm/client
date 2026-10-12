@@ -1,4 +1,5 @@
 import { router } from '@inertiajs/react';
+import { columnDragClass, useIssueDrag, type IssueStatus } from '@/hooks/use-issue-drag';
 import { Badge } from '@/components/ui/badge';
 import { User as UserIcon, Clock, ArrowUpRight, AlertTriangle, AlertCircle, Info, AlertOctagon, Gauge } from 'lucide-react';
 
@@ -27,44 +28,50 @@ interface Report {
 
 interface KanbanBoardProps {
     reports: Report[];
-    onStatusChange?: (reportId: number, newStatus: string) => void;
+    /** Whether the viewer may drag issues between columns to change their status */
+    canDrag?: boolean;
+    /** Called after an issue has been moved, so the caller can refresh its data */
+    onMoved?: () => void;
+    /** Show only this status's column, e.g. while the list is filtered to one status */
+    onlyStatus?: IssueStatus | null;
 }
 
+// Columns share the neutral brand surface; only the dot carries the status colour
 const statusConfig = {
     open: {
         label: 'Open',
         color: 'bg-blue-500',
-        bgColor: 'bg-blue-50',
-        borderColor: 'border-blue-200',
-        headerBg: 'bg-blue-100',
+        bgColor: 'bg-muted',
+        borderColor: 'border-border',
+        headerBg: 'bg-card',
     },
     in_progress: {
         label: 'In Progress',
         color: 'bg-amber-500',
-        bgColor: 'bg-amber-50',
-        borderColor: 'border-amber-200',
-        headerBg: 'bg-amber-100',
+        bgColor: 'bg-muted',
+        borderColor: 'border-border',
+        headerBg: 'bg-card',
     },
     resolved: {
         label: 'Resolved',
         color: 'bg-purple-500',
-        bgColor: 'bg-purple-50',
-        borderColor: 'border-purple-200',
-        headerBg: 'bg-purple-100',
+        bgColor: 'bg-muted',
+        borderColor: 'border-border',
+        headerBg: 'bg-card',
     },
     closed: {
         label: 'Closed',
         color: 'bg-green-500',
-        bgColor: 'bg-green-50',
-        borderColor: 'border-green-200',
-        headerBg: 'bg-green-100',
+        bgColor: 'bg-muted',
+        borderColor: 'border-border',
+        headerBg: 'bg-card',
     },
     reopened: {
         label: 'Reopened',
         color: 'bg-red-500',
-        bgColor: 'bg-red-50',
-        borderColor: 'border-red-200',
-        headerBg: 'bg-red-100',
+        bgColor: 'bg-muted',
+        borderColor: 'border-border',
+        headerBg: 'bg-card',
     },
 };
 
@@ -120,7 +127,7 @@ function getSlaStatus(report: Report): { status: 'breached' | 'at_risk' | 'on_tr
     return { status: 'on_track', label: '' };
 }
 
-function IssueCard({ report }: { report: Report }) {
+function IssueCard({ report, dragProps = {}, moving = false }: { report: Report; dragProps?: object; moving?: boolean }) {
     const projectName = typeof report.project === 'object' ? report.project?.name : report.project;
     const PriorityIcon = priorityConfig[report.priority]?.icon || Info;
     const priorityColor = priorityConfig[report.priority]?.color || 'text-gray-600';
@@ -130,7 +137,8 @@ function IssueCard({ report }: { report: Report }) {
 
     return (
         <div
-            className="bg-white rounded-lg border border-gray-200 p-3 mb-2 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+            {...dragProps}
+            className={`bg-white rounded-lg border border-gray-200 p-3 mb-2 shadow-sm hover:shadow-md transition-shadow cursor-pointer group ${moving ? 'opacity-50' : ''}`}
             onClick={() => router.get(`/reports/${report.uuid}`)}
         >
             {/* Issue Key & Priority */}
@@ -224,15 +232,18 @@ function IssueCard({ report }: { report: Report }) {
     );
 }
 
-function KanbanColumn({ status, reports, config }: { status: string; reports: Report[]; config: typeof statusConfig[keyof typeof statusConfig] }) {
+function KanbanColumn({ status, reports, config, drag }: { status: IssueStatus; reports: Report[]; config: typeof statusConfig[keyof typeof statusConfig]; drag: ReturnType<typeof useIssueDrag> }) {
     return (
-        <div className={`flex-1 min-w-[280px] max-w-[320px] rounded-lg ${config.bgColor} border ${config.borderColor}`}>
+        <div
+            {...drag.columnProps(status)}
+            className={`flex-1 min-w-[280px] max-w-[320px] overflow-hidden rounded-[14px] transition ${config.bgColor} border ${config.borderColor} ${columnDragClass(drag.columnState(status))}`}
+        >
             {/* Column Header */}
-            <div className={`px-3 py-2 ${config.headerBg} rounded-t-lg border-b ${config.borderColor}`}>
+            <div className={`px-4 py-3 ${config.headerBg} border-b ${config.borderColor}`}>
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <div className={`w-2.5 h-2.5 rounded-full ${config.color}`} />
-                        <h3 className="font-medium text-sm text-gray-700">{config.label}</h3>
+                        <h3 className="eyebrow">{config.label}</h3>
                     </div>
                     <Badge variant="secondary" className="text-xs font-normal">
                         {reports.length}
@@ -248,7 +259,12 @@ function KanbanColumn({ status, reports, config }: { status: string; reports: Re
                     </div>
                 ) : (
                     reports.map(report => (
-                        <IssueCard key={report.id} report={report} />
+                        <IssueCard
+                            key={report.id}
+                            report={report}
+                            dragProps={drag.cardProps(report)}
+                            moving={drag.movingUuid === report.uuid}
+                        />
                     ))
                 )}
             </div>
@@ -256,7 +272,9 @@ function KanbanColumn({ status, reports, config }: { status: string; reports: Re
     );
 }
 
-export default function KanbanBoard({ reports }: KanbanBoardProps) {
+export default function KanbanBoard({ reports, canDrag = false, onMoved, onlyStatus = null }: KanbanBoardProps) {
+    const drag = useIssueDrag({ enabled: canDrag, onMoved: onMoved ?? (() => undefined) });
+
     // Group reports by status
     const groupedReports = {
         open: reports.filter(r => r.status === 'open'),
@@ -266,24 +284,29 @@ export default function KanbanBoard({ reports }: KanbanBoardProps) {
         reopened: reports.filter(r => r.status === 'reopened'),
     };
 
-    // Combine open and reopened for display (both are "to do" items)
-    const columns = [
-        { status: 'open', reports: [...groupedReports.open, ...groupedReports.reopened] },
+    // One column per status, so reopened issues are not hidden among the open ones
+    const allColumns: Array<{ status: IssueStatus; reports: Report[] }> = [
+        { status: 'open', reports: groupedReports.open },
         { status: 'in_progress', reports: groupedReports.in_progress },
         { status: 'resolved', reports: groupedReports.resolved },
         { status: 'closed', reports: groupedReports.closed },
+        { status: 'reopened', reports: groupedReports.reopened },
     ];
+    const columns = onlyStatus ? allColumns.filter(column => column.status === onlyStatus) : allColumns;
 
     return (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-            {columns.map(({ status, reports }) => (
-                <KanbanColumn
-                    key={status}
-                    status={status}
-                    reports={reports}
-                    config={statusConfig[status as keyof typeof statusConfig]}
-                />
-            ))}
+        <div className="space-y-3">
+            <div className="flex gap-4 overflow-x-auto pb-4">
+                {columns.map(({ status, reports }) => (
+                    <KanbanColumn
+                        key={status}
+                        status={status}
+                        reports={reports}
+                        config={statusConfig[status]}
+                        drag={drag}
+                    />
+                ))}
+            </div>
         </div>
     );
 }

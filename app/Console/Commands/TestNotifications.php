@@ -78,7 +78,7 @@ class TestNotifications extends Command
 
         // Test 3: Report status changed notification
         $this->info("\n--- Testing Report Status Changed Notification ---");
-        $notificationService->notifyReportStatusChanged($report, $admin, 'pending', 'in_progress');
+        $notificationService->notifyReportStatusChanged($report, $admin, 'open', 'in_progress');
         $this->info('✓ Report status change notification sent');
 
         $this->info("\n🎉 All notification tests completed!");

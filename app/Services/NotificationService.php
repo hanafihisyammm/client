@@ -6,7 +6,6 @@ use App\Models\Project;
 use App\Models\Report;
 use App\Models\ReportComment;
 use App\Models\User;
-use App\Notifications\AccountCreated;
 use App\Notifications\CommentAdded;
 use App\Notifications\ProjectAssigned;
 use App\Notifications\ProjectUpdated;
@@ -15,6 +14,7 @@ use App\Notifications\ReportCreated;
 use App\Notifications\ReportDeleted;
 use App\Notifications\ReportStatusChanged;
 use App\Notifications\ReportUpdated;
+use App\Notifications\UserInvited;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Notification;
 
@@ -43,11 +43,11 @@ class NotificationService
     }
 
     /**
-     * Welcome a user whose account was created by an admin.
+     * Email a new user the link to set their name and password.
      */
-    public function notifyAccountCreated(User $newUser, User $createdBy): void
+    public function notifyUserInvited(User $newUser, User $invitedBy): void
     {
-        $newUser->notify(new AccountCreated($createdBy));
+        $newUser->notify(new UserInvited($invitedBy));
     }
 
     /**

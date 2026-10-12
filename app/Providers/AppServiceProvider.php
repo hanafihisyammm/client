@@ -11,6 +11,7 @@ use App\Observers\AuditObserver;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -30,6 +31,13 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerAuditLogging();
+
+        // An invited user who sets their password through "Forgot password" has also finished setting up
+        Event::listen(function (PasswordReset $event) {
+            if ($event->user->email_verified_at === null) {
+                $event->user->forceFill(['email_verified_at' => now()])->save();
+            }
+        });
     }
 
     /**

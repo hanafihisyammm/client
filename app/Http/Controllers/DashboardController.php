@@ -65,11 +65,12 @@ class DashboardController extends Controller
 
         $reports = $query->orderBy('created_at', 'desc')->get();
 
-        // Get available projects for filtering
+        // Every project the user can see, so issues in inactive or completed projects can still be
+        // filtered. The page uses the status to decide whether new issues can be created.
         if ($user->isClient() || $user->isDeveloper()) {
-            $projects = $user->projects()->where('projects.status', 'active')->select('projects.id', 'projects.name')->get();
+            $projects = $user->projects()->select('projects.id', 'projects.name', 'projects.status')->orderBy('projects.name')->get();
         } else {
-            $projects = Project::where('status', 'active')->select('id', 'name')->get();
+            $projects = Project::select('id', 'name', 'status')->orderBy('name')->get();
         }
 
         return Inertia::render('dashboard', [

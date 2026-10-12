@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import AppLayout from '@/layouts/app-layout'
 import KanbanBoard from '@/components/kanban-board'
+import { SearchableSelect } from '@/components/searchable-select'
 import type { User } from '@/types'
 
 interface Label {
@@ -50,6 +51,7 @@ interface Project {
   id: number
   name: string
   prefix?: string
+  status?: 'active' | 'inactive' | 'completed'
 }
 
 interface PageProps extends Record<string, unknown> {
@@ -131,6 +133,8 @@ type ViewMode = 'list' | 'board'
 
 export default function Dashboard() {
   const { auth, projects, userRole, stats } = usePage<PageProps>().props
+  // The filter lists every project; new issues can only be created in active ones
+  const activeProjects = projects.filter(project => project.status === 'active')
   const [allReports, setAllReports] = useState<Report[]>([])
   const [filteredReports, setFilteredReports] = useState<Report[]>([])
   const [loading, setLoading] = useState(true)
@@ -309,14 +313,14 @@ export default function Dashboard() {
 
             {/* Create Button */}
             {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'manager' ||
-              (userRole === 'client' && projects.length > 0) ||
-              (userRole === 'developer' && projects.length > 0)) && (
+              (userRole === 'client' && activeProjects.length > 0) ||
+              (userRole === 'developer' && activeProjects.length > 0)) && (
               <Button onClick={() => router.get('/reports/create')} className="shadow-sm">
                 <Plus className="w-4 h-4 mr-2" />
                 Create Issue
               </Button>
             )}
-            {(userRole === 'client' || userRole === 'developer') && projects.length === 0 && (
+            {(userRole === 'client' || userRole === 'developer') && activeProjects.length === 0 && (
               <p className="max-w-56 text-right text-xs text-muted-foreground">
                 You have no active projects, so you can't create issues yet. Ask your administrator to assign or reopen one.
               </p>
@@ -372,7 +376,7 @@ export default function Dashboard() {
             {/* Filter Dropdowns */}
             <div className="flex items-center gap-2">
               <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value, overdue: 'all' }))}>
-                <SelectTrigger className={`h-9 min-w-[120px] text-sm ${filters.status !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                <SelectTrigger className={`h-9 w-auto min-w-[120px] shrink-0 whitespace-nowrap text-sm ${filters.status !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -411,7 +415,7 @@ export default function Dashboard() {
               </Select>
 
               <Select value={filters.priority} onValueChange={(value) => setFilters(prev => ({ ...prev, priority: value }))}>
-                <SelectTrigger className={`h-9 min-w-[110px] text-sm ${filters.priority !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                <SelectTrigger className={`h-9 w-auto min-w-[110px] shrink-0 whitespace-nowrap text-sm ${filters.priority !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
                   <SelectValue placeholder="Priority" />
                 </SelectTrigger>
                 <SelectContent>
@@ -444,7 +448,7 @@ export default function Dashboard() {
               </Select>
 
               <Select value={filters.severity} onValueChange={(value) => setFilters(prev => ({ ...prev, severity: value }))}>
-                <SelectTrigger className={`h-9 w-[130px] text-sm ${filters.severity !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                <SelectTrigger className={`h-9 w-auto min-w-[130px] shrink-0 whitespace-nowrap text-sm ${filters.severity !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
                   <SelectValue placeholder="Severity" />
                 </SelectTrigger>
                 <SelectContent>
@@ -476,17 +480,19 @@ export default function Dashboard() {
                 </SelectContent>
               </Select>
 
-              <Select value={filters.project} onValueChange={(value) => setFilters(prev => ({ ...prev, project: value }))}>
-                <SelectTrigger className={`h-9 min-w-[130px] text-sm ${filters.project !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
-                  <SelectValue placeholder="Project" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Projects</SelectItem>
-                  {projects.map(project => (
-                    <SelectItem key={project.id} value={project.id.toString()}>{project.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={filters.project}
+                onChange={(value) => setFilters(prev => ({ ...prev, project: value }))}
+                allLabel="All Projects"
+                searchPlaceholder="Search projects..."
+                emptyText="No projects found"
+                options={projects.map(project => ({
+                  value: project.id.toString(),
+                  label: project.name,
+                  hint: project.status && project.status !== 'active' ? project.status : undefined,
+                }))}
+                className={`min-w-[130px] ${filters.project !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}
+              />
 
               {/* Clear Filters */}
               {(filters.status !== 'all' || filters.priority !== 'all' || filters.severity !== 'all' || filters.project !== 'all' || filters.overdue !== 'all' || filters.search) && (
@@ -568,7 +574,7 @@ export default function Dashboard() {
                 ? 'No issues match these filters. Try clearing a filter or picking another card.'
                 : 'Get started by creating your first issue.'}
             </p>
-            {(userRole !== 'client' || projects.length > 0) && (
+            {(userRole !== 'client' || activeProjects.length > 0) && (
               <Button onClick={() => router.get('/reports/create')}>
                 <Plus className="w-4 h-4 mr-2" />
                 Create Issue
@@ -576,7 +582,15 @@ export default function Dashboard() {
             )}
           </div>
         ) : viewMode === 'board' ? (
-          <KanbanBoard reports={filteredReports} />
+          <KanbanBoard
+            reports={filteredReports}
+            onlyStatus={filters.status !== 'all' ? filters.status as Report['status'] : null}
+            canDrag={['super_admin', 'admin', 'manager', 'developer'].includes(userRole)}
+            onMoved={() => {
+              fetchReports()
+              router.reload({ only: ['stats'] })
+            }}
+          />
         ) : (
           <div className="bg-white shadow-sm border rounded-xl overflow-hidden">
             <Table>

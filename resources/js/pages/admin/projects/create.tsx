@@ -1,4 +1,5 @@
 import { Head, useForm, router } from '@inertiajs/react';
+import { flashError } from '@/lib/flash';
 import { FormEventHandler, useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
@@ -80,11 +81,11 @@ export default function ProjectCreate({ clients }: Props) {
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
         if (!data.name.trim()) {
-            alert('Project name is required');
+            flashError('Project name is required.');
             return;
         }
         if (data.client_ids.length === 0) {
-            alert('At least one member must be assigned');
+            flashError('At least one member must be assigned.');
             return;
         }
         post('/projects');
@@ -102,7 +103,7 @@ export default function ProjectCreate({ clients }: Props) {
                         Back
                     </Button>
                     <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">Create Project</h1>
+                        <h1 className="text-3xl font-extrabold tracking-tight">Create Project</h1>
                         <p className="text-muted-foreground text-sm mt-1">Set up a new project and assign team members</p>
                     </div>
                 </div>

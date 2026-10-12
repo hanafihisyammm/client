@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { flashError, flashSuccess } from '@/lib/flash'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
@@ -90,14 +91,15 @@ export function LabelsPanel({
       })
 
       if (response.ok) {
+        flashSuccess(null, 'Labels updated successfully.')
         setShowSelector(false)
         onUpdate()
       } else {
         const data = await response.json()
-        alert(data.message || 'Failed to update labels')
+        flashError(data.message || 'Failed to update labels')
       }
     } catch (error) {
-      alert('Network error')
+      flashError('Network error')
     } finally {
       setLoading(false)
     }
@@ -121,7 +123,7 @@ export function LabelsPanel({
       {/* Label Selector */}
       {showSelector && (
         <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600 mb-3">Select labels for this report:</p>
+          <p className="text-sm text-gray-600 mb-3">Select labels for this issue:</p>
           {availableLabels.length > 0 ? (
             <div className="flex flex-wrap gap-2 mb-4">
               {availableLabels.map((label) => {

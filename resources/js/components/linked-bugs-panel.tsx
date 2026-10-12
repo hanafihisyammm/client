@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flashError, flashSuccess } from '@/lib/flash'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -41,12 +42,11 @@ const linkTypes = {
 }
 
 const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-500',
-  in_progress: 'bg-blue-500',
-  submit_for_review: 'bg-purple-500',
-  approved: 'bg-green-500',
-  rejected: 'bg-red-500',
-  closed: 'bg-gray-500'
+  open: 'bg-blue-500',
+  in_progress: 'bg-amber-500',
+  resolved: 'bg-purple-500',
+  closed: 'bg-green-500',
+  reopened: 'bg-red-500'
 }
 
 export function LinkedBugsPanel({
@@ -95,15 +95,16 @@ export function LinkedBugsPanel({
 
       const data = await response.json()
       if (response.ok) {
+        flashSuccess(data.message, 'Issue linked successfully.')
         setTargetUuid('')
         setLinkType('relates_to')
         setShowAddForm(false)
         onUpdate()
       } else {
-        alert(data.message || 'Failed to link report')
+        flashError(data.message || 'Failed to link issue')
       }
     } catch (error) {
-      alert('Network error')
+      flashError('Network error')
     } finally {
       setLoading(false)
     }
@@ -125,13 +126,14 @@ export function LinkedBugsPanel({
       })
 
       if (response.ok) {
+        flashSuccess(null, 'Link removed successfully.')
         onUpdate()
       } else {
         const data = await response.json()
-        alert(data.message || 'Failed to remove link')
+        flashError(data.message || 'Failed to remove link')
       }
     } catch (error) {
-      alert('Network error')
+      flashError('Network error')
     } finally {
       setLoading(false)
     }
@@ -192,12 +194,12 @@ export function LinkedBugsPanel({
       {showAddForm && (
         <form onSubmit={handleSubmit} className="mb-4 p-4 bg-gray-50 rounded-lg space-y-3">
           <div>
-            <Label htmlFor="targetUuid">Report UUID or ID *</Label>
+            <Label htmlFor="targetUuid">Issue UUID or ID *</Label>
             <Input
               id="targetUuid"
               value={targetUuid}
               onChange={(e) => setTargetUuid(e.target.value)}
-              placeholder="Enter the UUID of the report to link"
+              placeholder="Enter the UUID of the issue to link"
               required
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -221,7 +223,7 @@ export function LinkedBugsPanel({
           </div>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={loading}>
-              {loading ? 'Linking...' : 'Link Report'}
+              {loading ? 'Linking...' : 'Link Issue'}
             </Button>
             <Button type="button" size="sm" variant="outline" onClick={() => setShowAddForm(false)}>
               Cancel

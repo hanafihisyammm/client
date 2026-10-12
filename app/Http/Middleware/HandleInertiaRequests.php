@@ -47,6 +47,15 @@ class HandleInertiaRequests extends Middleware
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'csrfToken' => csrf_token(),
+            // One-off success/error message set by the previous action. The id lets the page
+            // show each message once, even if the browser restores this page from history.
+            'flash' => function () use ($request) {
+                $flash = $request->session()->get('flash');
+
+                return is_array($flash) && !empty($flash['message'])
+                    ? ['id' => (string) \Illuminate\Support\Str::uuid(), 'message' => $flash['message'], 'type' => $flash['type'] ?? 'success']
+                    : null;
+            },
         ];
     }
 }

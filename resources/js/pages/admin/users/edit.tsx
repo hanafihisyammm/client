@@ -89,7 +89,7 @@ export default function Edit({ user }: Props) {
                         </Button>
                     </Link>
                     <div>
-                        <h1 className="text-2xl font-semibold text-gray-900">Edit User</h1>
+                        <h1 className="text-3xl font-extrabold tracking-tight">Edit User</h1>
                         <p className="text-gray-600">Update {user.name}'s account information</p>
                     </div>
                 </div>
@@ -188,8 +188,8 @@ export default function Edit({ user }: Props) {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h3 className="font-medium text-blue-900 mb-2">Role Permissions</h3>
                     <div className="text-sm text-blue-800 space-y-1">
-                        <div><strong>Client:</strong> Can create and view their own reports</div>
-                        <div><strong>Developer:</strong> Can manage reports and view project details</div>
+                        <div><strong>Client:</strong> Can create and view their own issues</div>
+                        <div><strong>Developer:</strong> Can manage issues and view project details</div>
                         <div><strong>Admin:</strong> Can manage users and all system functions</div>
                     </div>
                 </div>

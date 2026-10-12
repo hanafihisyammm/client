@@ -1,13 +1,17 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import AppLayout from '@/layouts/app-layout';
+import { PageHeader } from '@/components/page-header';
+import { StatCard } from '@/components/stat-card';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
+import { filterControlClass } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { PlusIcon, Users, FileText, Edit, Trash2, Eye, Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, FolderKanban, CheckCircle2, Clock, Loader2, XCircle, Briefcase } from 'lucide-react';
+import { PlusIcon, Users, FileText, Edit, Trash2, Eye, Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, FolderKanban, CheckCircle2, Clock, Loader2, XCircle, Briefcase, X, RotateCcw } from 'lucide-react';
 
 interface User {
     id: number;
@@ -31,6 +35,7 @@ interface Project {
     in_progress_reports_count?: number;
     resolved_reports_count?: number;
     closed_reports_count?: number;
+    reopened_reports_count?: number;
 }
 
 interface Props {
@@ -89,7 +94,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // Report status mini badge
-function ReportStatusBadge({ count, type }: { count: number; type: 'open' | 'in_progress' | 'resolved' | 'closed' }) {
+function ReportStatusBadge({ count, type }: { count: number; type: 'open' | 'in_progress' | 'resolved' | 'closed' | 'reopened' }) {
     if (count === 0) {
         return <span className="text-gray-300">—</span>;
     }
@@ -99,6 +104,7 @@ function ReportStatusBadge({ count, type }: { count: number; type: 'open' | 'in_
         in_progress: { bg: 'bg-amber-100 text-amber-700', icon: Loader2 },
         resolved: { bg: 'bg-purple-100 text-purple-700', icon: CheckCircle2 },
         closed: { bg: 'bg-green-100 text-green-700', icon: XCircle },
+        reopened: { bg: 'bg-red-100 text-red-700', icon: RotateCcw },
     }[type];
 
     const Icon = config.icon;
@@ -112,20 +118,6 @@ function ReportStatusBadge({ count, type }: { count: number; type: 'open' | 'in_
 }
 
 // Stats card
-function StatsCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: number; color: string }) {
-    return (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${color}`}>
-            <div className="p-2 rounded-lg bg-white shadow-sm">
-                <Icon className="w-4 h-4" />
-            </div>
-            <div>
-                <p className="text-2xl font-bold">{value}</p>
-                <p className="text-xs text-muted-foreground">{label}</p>
-            </div>
-        </div>
-    );
-}
-
 export default function ProjectIndex({ projects }: Props) {
     const [deleteProject, setDeleteProject] = useState<Project | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -226,57 +218,58 @@ export default function ProjectIndex({ projects }: Props) {
 
             <div className="space-y-6">
                 {/* Header */}
-                <div className="flex items-start justify-between">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">Project Management</h1>
-                        <p className="text-muted-foreground text-sm mt-1">
-                            Manage projects and track their progress
-                        </p>
-                    </div>
+                <PageHeader title="Projects" description="Manage projects and track their progress">
                     <Link href="/projects/create">
                         <Button className="shadow-sm">
                             <PlusIcon className="h-4 w-4 mr-2" />
                             Create Project
                         </Button>
                     </Link>
-                </div>
+                </PageHeader>
 
                 {/* Stats Cards */}
-                <div className="grid grid-cols-3 gap-4">
-                    <StatsCard
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <StatCard
                         icon={FolderKanban}
                         label="Total Projects"
                         value={stats.total}
-                        color="bg-slate-50 border-slate-200"
                     />
-                    <StatsCard
+                    <StatCard
                         icon={Briefcase}
                         label="Active Projects"
                         value={stats.active}
-                        color="bg-green-50 border-green-200"
                     />
-                    <StatsCard
+                    <StatCard
                         icon={FileText}
-                        label="Total Reports"
+                        label="Total Issues"
                         value={stats.totalReports}
-                        color="bg-blue-50 border-blue-200"
                     />
                 </div>
 
                 {/* Filters */}
                 <div className="flex items-center gap-3">
-                    <div className="relative flex-1 max-w-sm">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <Input
                             placeholder="Search projects..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9"
+                            className="pl-9 h-9 bg-white"
                         />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                aria-label="Clear search"
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+                            >
+                                <X className="w-3 h-3 text-gray-400" />
+                            </button>
+                        )}
                     </div>
 
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-40">
+                        <SelectTrigger className={`${filterControlClass(statusFilter !== 'all')} w-40 shrink-0`}>
                             <SelectValue placeholder="All Status" />
                         </SelectTrigger>
                         <SelectContent>
@@ -287,25 +280,17 @@ export default function ProjectIndex({ projects }: Props) {
                         </SelectContent>
                     </Select>
 
-                    <div className="flex items-center gap-2">
-                        <Input
-                            type="date"
-                            aria-label="Created from date"
-                            value={dateFrom}
-                            max={dateTo || undefined}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                            className="w-40"
-                        />
-                        <span className="text-sm text-muted-foreground">to</span>
-                        <Input
-                            type="date"
-                            aria-label="Created to date"
-                            value={dateTo}
-                            min={dateFrom || undefined}
-                            onChange={(e) => setDateTo(e.target.value)}
-                            className="w-40"
-                        />
-                    </div>
+                    <DateRangePicker
+                        aria-label="Created date range"
+                        from={dateFrom}
+                        to={dateTo}
+                        onChange={({ from, to }) => {
+                            setDateFrom(from);
+                            setDateTo(to);
+                        }}
+                        placeholder="Created date"
+                        className={`${filterControlClass(!!dateFrom)} shrink-0 px-3 shadow-xs`}
+                    />
 
                     {(searchQuery || statusFilter !== 'all' || dateFrom || dateTo) && (
                         <Button
@@ -317,9 +302,10 @@ export default function ProjectIndex({ projects }: Props) {
                                 setDateFrom('');
                                 setDateTo('');
                             }}
-                            className="text-muted-foreground"
+                            className="h-9 px-3 text-gray-500 hover:text-gray-700"
                         >
-                            Clear filters
+                            <X className="w-3.5 h-3.5 mr-1" />
+                            Clear
                         </Button>
                     )}
                 </div>
@@ -359,8 +345,8 @@ export default function ProjectIndex({ projects }: Props) {
                                 <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground text-center">
                                     Clients
                                 </TableHead>
-                                <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground text-center" colSpan={4}>
-                                    Report Status
+                                <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground text-center" colSpan={5}>
+                                    Issue Status
                                 </TableHead>
                                 <TableHead>
                                     <Button
@@ -389,9 +375,10 @@ export default function ProjectIndex({ projects }: Props) {
                                 <TableHead></TableHead>
                                 <TableHead></TableHead>
                                 <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">Open</TableHead>
-                                <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">In Progress</TableHead>
+                                <TableHead className="text-xs text-muted-foreground font-normal text-center py-1 whitespace-nowrap">In Progress</TableHead>
                                 <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">Resolved</TableHead>
                                 <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">Closed</TableHead>
+                                <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">Reopened</TableHead>
                                 <TableHead></TableHead>
                                 <TableHead></TableHead>
                                 <TableHead></TableHead>
@@ -400,7 +387,7 @@ export default function ProjectIndex({ projects }: Props) {
                         <TableBody>
                             {filteredAndSortedProjects.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={10} className="h-32 text-center">
+                                    <TableCell colSpan={11} className="h-32 text-center">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                             <FolderKanban className="h-8 w-8 opacity-50" />
                                             <p>No projects found</p>
@@ -459,6 +446,9 @@ export default function ProjectIndex({ projects }: Props) {
                                         </TableCell>
                                         <TableCell className="text-center">
                                             <ReportStatusBadge count={project.closed_reports_count || 0} type="closed" />
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <ReportStatusBadge count={project.reopened_reports_count || 0} type="reopened" />
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-1.5">
@@ -523,7 +513,7 @@ export default function ProjectIndex({ projects }: Props) {
                         <DialogTitle className="text-center">Delete Project</DialogTitle>
                         <DialogDescription className="text-center">
                             Are you sure you want to delete <span className="font-medium text-gray-900">{deleteProject?.name}</span>?
-                            This will also delete all associated reports and data. This action cannot be undone.
+                            This will also delete all associated issues and data. This action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="flex gap-3 mt-6">

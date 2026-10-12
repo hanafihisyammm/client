@@ -8,14 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DatePicker } from '@/components/ui/date-picker'
 import {
   Upload, X, ArrowLeft, Bug, Sparkles, AlertTriangle, ArrowUpRight,
-  AlertCircle, Info, FileImage, File, Calendar, FolderKanban
+  AlertCircle, Info, FileImage, File, Calendar
 } from 'lucide-react'
+import { SearchableSelect } from '@/components/searchable-select'
 import AppLayout from '@/layouts/app-layout'
+import { flashError, flashSuccess } from '@/lib/flash'
+import { goBack } from '@/lib/navigation'
 
 interface Project {
   id: number
   name: string
   prefix?: string
+  status?: 'active' | 'inactive' | 'completed'
 }
 
 interface PageProps extends Record<string, unknown> {
@@ -55,6 +59,8 @@ export default function CreateReport() {
   const [isDragging, setIsDragging] = useState(false)
 
   const selectedProject = projects.find(p => p.id.toString() === projectId)
+  // Every project is listed, but an issue can only be created in an active one
+  const hasActiveProject = projects.some(p => p.status === 'active')
   const selectedPriority = priorityOptions.find(p => p.value === priority)
   const PriorityIcon = selectedPriority?.icon || AlertCircle
 
@@ -113,7 +119,7 @@ export default function CreateReport() {
       }
 
       if (!csrfToken) {
-        setErrors({ general: ['CSRF token not found. Please refresh the page.'] })
+        flashError('Your session has expired. Please refresh the page and try again.')
         setLoading(false)
         return
       }
@@ -132,16 +138,17 @@ export default function CreateReport() {
       const data = await response.json()
 
       if (response.ok) {
+        flashSuccess(data.message, 'Issue created successfully.')
         router.get('/dashboard')
       } else {
         if (data.errors) {
           setErrors(data.errors)
         } else {
-          setErrors({ general: [data.message || 'Failed to create issue'] })
+          flashError(data.message, 'Failed to create issue.')
         }
       }
     } catch (error) {
-      setErrors({ general: ['Network error. Please try again.'] })
+      flashError('Network error. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -214,14 +221,14 @@ export default function CreateReport() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => router.get('/dashboard')}
+            onClick={() => goBack('/dashboard')}
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
 
           <div className="flex-1">
-            <h1 className="text-2xl font-semibold tracking-tight">Create Issue</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight">Create Issue</h1>
             <p className="text-muted-foreground text-sm mt-1">
               Report a bug or request a new feature
             </p>
@@ -233,14 +240,6 @@ export default function CreateReport() {
           {/* Left Column - Main Form */}
           <div className="lg:col-span-2 space-y-6">
             <form onSubmit={handleSubmit} className="space-y-6">
-              {errors.general && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                  {errors.general.map((error, index) => (
-                    <p key={index} className="text-red-600 text-sm">{error}</p>
-                  ))}
-                </div>
-              )}
-
               {/* Issue Type Selector */}
               <div className="bg-white border rounded-xl p-6">
                 <Label className="text-sm font-medium text-gray-700 mb-3 block">Issue Type</Label>
@@ -284,29 +283,37 @@ export default function CreateReport() {
 
               {/* Project & Title */}
               <div className="bg-white border rounded-xl p-6 space-y-4">
+                {!hasActiveProject && (
+                  <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    <p className="font-medium">There are no active projects</p>
+                    <p className="mt-1">
+                      An issue has to belong to an active project. Set a project's status to Active, or create a new project, then come back here.
+                    </p>
+                    <Button type="button" variant="outline" size="sm" className="mt-3 bg-white" onClick={() => router.get('/projects')}>
+                      Go to Projects
+                    </Button>
+                  </div>
+                )}
                 {projects && projects.length > 0 && (
                   <div className="space-y-2">
                     <Label htmlFor="project" className="text-sm font-medium text-gray-700">
                       Project <span className="text-red-500">*</span>
                     </Label>
-                    <Select value={projectId} onValueChange={setProjectId}>
-                      <SelectTrigger className="h-11">
-                        <SelectValue placeholder="Select a project" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.id} value={project.id.toString()}>
-                            <div className="flex items-center gap-2">
-                              <FolderKanban className="w-4 h-4 text-gray-400" />
-                              {project.name}
-                              {project.prefix && (
-                                <span className="text-xs text-gray-400 font-mono">({project.prefix})</span>
-                              )}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      value={projectId}
+                      onChange={setProjectId}
+                      placeholder="Select a project"
+                      searchPlaceholder="Search projects..."
+                      emptyText="No projects found"
+                      options={projects.map((project) => ({
+                        value: project.id.toString(),
+                        label: project.prefix ? `${project.name} (${project.prefix})` : project.name,
+                        hint: project.status !== 'active' ? `${project.status}, cannot take new issues` : undefined,
+                        disabled: project.status !== 'active',
+                      }))}
+                      className="h-11 w-full bg-white"
+                      contentClassName="w-(--radix-popover-trigger-width)"
+                    />
                     {errors.project_id && (
                       <p className="text-red-600 text-sm">{errors.project_id[0]}</p>
                     )}
@@ -532,6 +539,13 @@ export default function CreateReport() {
               >
                 {loading ? 'Creating...' : 'Create Issue'}
               </Button>
+              {!loading && (!projectId || !title.trim() || !description.trim()) && (
+                <p className="text-center text-xs text-muted-foreground">
+                  {!hasActiveProject
+                    ? 'No active project to create the issue in.'
+                    : `Still needed: ${[!projectId && 'project', !title.trim() && 'summary', !description.trim() && 'description'].filter(Boolean).join(', ')}.`}
+                </p>
+              )}
               <Button
                 type="button"
                 variant="outline"

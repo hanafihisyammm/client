@@ -115,7 +115,7 @@ export default function ProjectEdit({ project, clients }: Props) {
                                     <ArrowLeft className="w-4 h-4" />
                                 </Button>
                             </Link>
-                            <h1 className="text-2xl font-semibold text-gray-900">Edit Project: {project.name}</h1>
+                            <h1 className="text-3xl font-extrabold tracking-tight">Edit Project: {project.name}</h1>
                         </div>
 
                         <form onSubmit={submit}>
@@ -235,15 +235,15 @@ export default function ProjectEdit({ project, clients }: Props) {
                             </p>
                             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                                 <p className="text-sm text-amber-800 font-medium">
-                                    ⚠️ This action will automatically close all open reports in this project:
+                                    ⚠️ This action will automatically close all unfinished issues in this project:
                                 </p>
                                 <ul className="text-sm text-amber-700 mt-2 space-y-1">
-                                    <li>• Reports with status "Pending"</li>
-                                    <li>• Reports with status "Submit for Review"</li>
-                                    <li>• Reports with status "In Progress"</li>
+                                    <li>• Issues with status "Open"</li>
+                                    <li>• Issues with status "Reopened"</li>
+                                    <li>• Issues with status "In Progress"</li>
                                 </ul>
                                 <p className="text-xs text-amber-600 mt-2">
-                                    Reports that are already "Approved" or "Closed" will remain unchanged.
+                                    Issues that are already "Resolved" or "Closed" will remain unchanged.
                                 </p>
                             </div>
                         </DialogDescription>

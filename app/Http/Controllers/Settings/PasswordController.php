@@ -33,6 +33,9 @@ class PasswordController extends Controller
             'password' => $validated['password'],
         ]);
 
-        return back();
+        return back()->with('flash', [
+            'message' => 'Password updated successfully.',
+            'type' => 'success',
+        ]);
     }
 }

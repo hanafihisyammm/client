@@ -1,9 +1,11 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { StatCard } from '@/components/stat-card';
+import { columnDragClass, useIssueDrag } from '@/hooks/use-issue-drag';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
 import {
     ArrowLeft, Edit, Users, FileText, Calendar, User, Clock, CheckCircle2,
-    AlertCircle, FolderKanban, Plus, Settings, RotateCcw, ExternalLink,
+    AlertCircle, FolderKanban, Plus, Settings, RotateCcw,
     Bug, Sparkles, ArrowUpRight, AlertTriangle, Info
 } from 'lucide-react';
 
@@ -76,15 +78,16 @@ const roleBadgeColors: Record<string, string> = {
     client: 'bg-amber-100 text-amber-700',
 };
 
-function IssueCard({ report, projectPrefix }: { report: Report; projectPrefix?: string }) {
+function IssueCard({ report, projectPrefix, dragProps = {}, moving = false }: { report: Report; projectPrefix?: string; dragProps?: object; moving?: boolean }) {
     const status = statusConfig[report.status] || statusConfig.open;
     const priority = priorityConfig[report.priority || 'medium'];
     const PriorityIcon = priority?.icon || AlertCircle;
 
     return (
         <div
+            {...dragProps}
             onClick={() => router.get(`/reports/${report.uuid}`)}
-            className="bg-white border rounded-lg p-3 hover:shadow-md transition-all cursor-pointer group"
+            className={`bg-white border rounded-lg p-3 hover:shadow-md transition-all cursor-pointer group ${moving ? 'opacity-50' : ''}`}
         >
             <div className="flex items-start justify-between gap-2 mb-2">
                 <span className="text-xs font-mono text-blue-600 group-hover:underline">
@@ -124,16 +127,28 @@ export default function ProjectShow({ project }: Props) {
 
     // Calculate report stats with new statuses
     const stats = {
-        open: project.reports.filter(r => r.status === 'open' || r.status === 'reopened').length,
+        open: project.reports.filter(r => r.status === 'open').length,
+        reopened: project.reports.filter(r => r.status === 'reopened').length,
         inProgress: project.reports.filter(r => r.status === 'in_progress').length,
         resolved: project.reports.filter(r => r.status === 'resolved').length,
         closed: project.reports.filter(r => r.status === 'closed').length,
     };
 
-    // Group reports by status for mini board
-    const openIssues = project.reports.filter(r => r.status === 'open' || r.status === 'reopened').slice(0, 5);
-    const inProgressIssues = project.reports.filter(r => r.status === 'in_progress').slice(0, 5);
-    const resolvedIssues = project.reports.filter(r => r.status === 'resolved').slice(0, 5);
+    // Team members can drag an issue to another column to change its status
+    const { auth } = usePage<{ auth: { user: { role?: string } } }>().props;
+    const drag = useIssueDrag({
+        enabled: ['super_admin', 'admin', 'manager', 'developer'].includes(auth.user.role ?? ''),
+        onMoved: () => router.reload({ only: ['project'] }),
+    });
+
+    // Every issue in the project, one column per status
+    const boardColumns: Array<{ status: Report['status']; empty: string }> = [
+        { status: 'open', empty: 'No open issues' },
+        { status: 'in_progress', empty: 'No issues in progress' },
+        { status: 'resolved', empty: 'No resolved issues' },
+        { status: 'closed', empty: 'No closed issues' },
+        { status: 'reopened', empty: 'No reopened issues' },
+    ];
 
     return (
         <AppLayout>
@@ -151,7 +166,7 @@ export default function ProjectShow({ project }: Props) {
                         </Link>
                         <div>
                             <div className="flex items-center gap-3">
-                                <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
+                                <h1 className="text-3xl font-extrabold tracking-tight">{project.name}</h1>
                                 {project.prefix && (
                                     <span className="text-sm font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
                                         {project.prefix}
@@ -191,51 +206,12 @@ export default function ProjectShow({ project }: Props) {
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-4 gap-4">
-                    <div className="bg-white border rounded-xl p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-lg bg-blue-50">
-                                <AlertCircle className="w-5 h-5 text-blue-600" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-gray-900">{stats.open}</p>
-                                <p className="text-sm text-gray-500">Open</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="bg-white border rounded-xl p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-lg bg-amber-50">
-                                <Clock className="w-5 h-5 text-amber-600" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-gray-900">{stats.inProgress}</p>
-                                <p className="text-sm text-gray-500">In Progress</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="bg-white border rounded-xl p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-lg bg-purple-50">
-                                <CheckCircle2 className="w-5 h-5 text-purple-600" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-gray-900">{stats.resolved}</p>
-                                <p className="text-sm text-gray-500">Resolved</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="bg-white border rounded-xl p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-lg bg-green-50">
-                                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-gray-900">{stats.closed}</p>
-                                <p className="text-sm text-gray-500">Closed</p>
-                            </div>
-                        </div>
-                    </div>
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+                    <StatCard label="Open" value={stats.open} hint="Not yet started" icon={AlertCircle} color="text-blue-600 bg-blue-50" />
+                    <StatCard label="In Progress" value={stats.inProgress} hint="Being worked on" icon={Clock} color="text-amber-600 bg-amber-50" />
+                    <StatCard label="Resolved" value={stats.resolved} hint="Waiting for client to confirm" icon={CheckCircle2} color="text-purple-600 bg-purple-50" />
+                    <StatCard label="Closed" value={stats.closed} hint="Confirmed and completed" icon={CheckCircle2} color="text-green-600 bg-green-50" />
+                    <StatCard label="Reopened" value={stats.reopened} hint="Sent back, needs rework" icon={RotateCcw} color="text-red-600 bg-red-50" />
                 </div>
 
                 {/* Main Content */}
@@ -245,10 +221,10 @@ export default function ProjectShow({ project }: Props) {
                         <div className="bg-white border rounded-xl overflow-hidden">
                             <div className="px-5 py-4 border-b flex items-center justify-between">
                                 <h2 className="font-medium text-gray-900">Issues</h2>
-                                <Link href="/dashboard" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                                    View all
-                                    <ExternalLink className="w-3 h-3" />
-                                </Link>
+                                <span className="text-sm text-gray-500">
+                                    {drag.enabled && 'Drag an issue to another column to change its status · '}
+                                    {project.reports.length} total
+                                </span>
                             </div>
 
                             {project.reports.length === 0 ? (
@@ -263,76 +239,42 @@ export default function ProjectShow({ project }: Props) {
                                     </Link>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-3 divide-x">
-                                    {/* Open Column */}
-                                    <div className="p-4">
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <span className="w-2 h-2 rounded-full bg-blue-500" />
-                                            <span className="text-sm font-medium text-gray-700">Open</span>
-                                            <span className="text-xs text-gray-400 ml-auto">{stats.open}</span>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {openIssues.length === 0 ? (
-                                                <p className="text-xs text-gray-400 text-center py-4">No open issues</p>
-                                            ) : (
-                                                openIssues.map(report => (
-                                                    <IssueCard key={report.id} report={report} projectPrefix={project.prefix} />
-                                                ))
-                                            )}
-                                            {stats.open > 5 && (
-                                                <p className="text-xs text-center text-gray-400 pt-2">
-                                                    +{stats.open - 5} more
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
+                                <>
+                                <div className="flex gap-4 overflow-x-auto p-4">
+                                    {boardColumns.map(({ status, empty }) => {
+                                        const issues = project.reports.filter(r => r.status === status);
 
-                                    {/* In Progress Column */}
-                                    <div className="p-4 bg-amber-50/30">
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <span className="w-2 h-2 rounded-full bg-amber-500" />
-                                            <span className="text-sm font-medium text-gray-700">In Progress</span>
-                                            <span className="text-xs text-gray-400 ml-auto">{stats.inProgress}</span>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {inProgressIssues.length === 0 ? (
-                                                <p className="text-xs text-gray-400 text-center py-4">No issues in progress</p>
-                                            ) : (
-                                                inProgressIssues.map(report => (
-                                                    <IssueCard key={report.id} report={report} projectPrefix={project.prefix} />
-                                                ))
-                                            )}
-                                            {stats.inProgress > 5 && (
-                                                <p className="text-xs text-center text-gray-400 pt-2">
-                                                    +{stats.inProgress - 5} more
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Resolved Column */}
-                                    <div className="p-4 bg-purple-50/30">
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <span className="w-2 h-2 rounded-full bg-purple-500" />
-                                            <span className="text-sm font-medium text-gray-700">Resolved</span>
-                                            <span className="text-xs text-gray-400 ml-auto">{stats.resolved}</span>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {resolvedIssues.length === 0 ? (
-                                                <p className="text-xs text-gray-400 text-center py-4">No resolved issues</p>
-                                            ) : (
-                                                resolvedIssues.map(report => (
-                                                    <IssueCard key={report.id} report={report} projectPrefix={project.prefix} />
-                                                ))
-                                            )}
-                                            {stats.resolved > 5 && (
-                                                <p className="text-xs text-center text-gray-400 pt-2">
-                                                    +{stats.resolved - 5} more
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
+                                        return (
+                                            <div
+                                                key={status}
+                                                {...drag.columnProps(status)}
+                                                className={`min-w-[200px] flex-1 overflow-hidden rounded-[14px] border bg-muted transition ${columnDragClass(drag.columnState(status))}`}
+                                            >
+                                                <div className="flex items-center gap-2 border-b bg-card px-4 py-3">
+                                                    <span className={`w-2.5 h-2.5 rounded-full ${statusConfig[status].dot}`} />
+                                                    <span className="eyebrow">{statusConfig[status].label}</span>
+                                                    <span className="ml-auto rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">{issues.length}</span>
+                                                </div>
+                                                <div className="space-y-2 p-2">
+                                                    {issues.length === 0 ? (
+                                                        <p className="py-8 text-center text-sm text-gray-400">{empty}</p>
+                                                    ) : (
+                                                        issues.map(report => (
+                                                            <IssueCard
+                                                                key={report.id}
+                                                                report={report}
+                                                                projectPrefix={project.prefix}
+                                                                dragProps={drag.cardProps(report)}
+                                                                moving={drag.movingUuid === report.uuid}
+                                                            />
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
+                                </>
                             )}
                         </div>
                     </div>

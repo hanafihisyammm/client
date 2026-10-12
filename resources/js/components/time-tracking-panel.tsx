@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ANY_PAST_DATE, DatePicker } from '@/components/ui/date-picker'
+import { flashError, flashSuccess } from '@/lib/flash'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -78,15 +80,16 @@ export function TimeTrackingPanel({
       })
 
       if (response.ok) {
+        flashSuccess(null, 'Time logged successfully.')
         setFormData({ hours: '', description: '', logged_date: new Date().toISOString().split('T')[0] })
         setShowAddForm(false)
         onUpdate()
       } else {
         const data = await response.json()
-        alert(data.message || 'Failed to log time')
+        flashError(data.message || 'Failed to log time')
       }
     } catch (error) {
-      alert('Network error')
+      flashError('Network error')
     } finally {
       setLoading(false)
     }
@@ -108,13 +111,14 @@ export function TimeTrackingPanel({
       })
 
       if (response.ok) {
+        flashSuccess(null, 'Time entry deleted successfully.')
         onUpdate()
       } else {
         const data = await response.json()
-        alert(data.message || 'Failed to delete')
+        flashError(data.message || 'Failed to delete')
       }
     } catch (error) {
-      alert('Network error')
+      flashError('Network error')
     } finally {
       setLoading(false)
     }
@@ -194,13 +198,13 @@ export function TimeTrackingPanel({
             </div>
             <div>
               <Label htmlFor="logged_date">Date *</Label>
-              <Input
+              <DatePicker
                 id="logged_date"
-                type="date"
                 value={formData.logged_date}
-                onChange={(e) => setFormData({ ...formData, logged_date: e.target.value })}
-                max={new Date().toISOString().split('T')[0]}
-                required
+                onChange={(logged_date) => setFormData({ ...formData, logged_date })}
+                displayFormat="d MMM yyyy"
+                minDate={ANY_PAST_DATE}
+                maxDate={new Date()}
               />
             </div>
           </div>

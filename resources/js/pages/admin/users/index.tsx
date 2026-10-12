@@ -6,8 +6,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import AppLayout from '@/layouts/app-layout';
-import { Head, Link, useForm } from '@inertiajs/react';
-import { PlusIcon, Edit, TrashIcon, Search, Eye, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, Users, Shield, UserCog, Code, User, Mail, Calendar } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
+import { StatCard } from '@/components/stat-card';
+import { flashError } from '@/lib/flash';
+import { filterControlClass } from '@/lib/utils';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import { PlusIcon, Edit, TrashIcon, Search, Eye, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, Users, Shield, UserCog, Code, User, Mail, Calendar, Send, X } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 interface User {
@@ -111,22 +115,14 @@ function StatusBadge({ isActive }: { isActive: boolean }) {
 }
 
 // Stats card
-function StatsCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: number; color: string }) {
-    return (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${color}`}>
-            <div className="p-2 rounded-lg bg-white shadow-sm">
-                <Icon className="w-4 h-4" />
-            </div>
-            <div>
-                <p className="text-2xl font-bold">{value}</p>
-                <p className="text-xs text-muted-foreground">{label}</p>
-            </div>
-        </div>
-    );
-}
-
 export default function Index({ users }: Props) {
     const [deleteUser, setDeleteUser] = useState<User | null>(null);
+    const resendInvitation = (user: User) => {
+        router.post(`/users/${user.uuid}/invitation`, {}, {
+            preserveScroll: true,
+            onError: () => flashError(`Could not send the invitation to ${user.email}.`),
+        });
+    };
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -231,57 +227,58 @@ export default function Index({ users }: Props) {
 
             <div className="space-y-6">
                 {/* Header */}
-                <div className="flex items-start justify-between">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">User Management</h1>
-                        <p className="text-muted-foreground text-sm mt-1">
-                            Manage system users and their access levels
-                        </p>
-                    </div>
+                <PageHeader title="Users" description="Manage system users and their access levels">
                     <Link href="/users/create">
                         <Button className="shadow-sm">
                             <PlusIcon className="h-4 w-4 mr-2" />
                             Add User
                         </Button>
                     </Link>
-                </div>
+                </PageHeader>
 
                 {/* Stats Cards */}
-                <div className="grid grid-cols-3 gap-4">
-                    <StatsCard
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <StatCard
                         icon={Users}
                         label="Total Users"
                         value={stats.total}
-                        color="bg-slate-50 border-slate-200"
                     />
-                    <StatsCard
+                    <StatCard
                         icon={Shield}
                         label="Administrators"
                         value={stats.admins}
-                        color="bg-blue-50 border-blue-200"
                     />
-                    <StatsCard
+                    <StatCard
                         icon={User}
                         label="Active Users"
                         value={stats.active}
-                        color="bg-green-50 border-green-200"
                     />
                 </div>
 
                 {/* Filters */}
                 <div className="flex items-center gap-3">
-                    <div className="relative flex-1 max-w-sm">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <div className="relative flex-1 max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <Input
                             placeholder="Search by name or email..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9"
+                            className="pl-9 h-9 bg-white"
                         />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                aria-label="Clear search"
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+                            >
+                                <X className="w-3 h-3 text-gray-400" />
+                            </button>
+                        )}
                     </div>
 
                     <Select value={roleFilter} onValueChange={setRoleFilter}>
-                        <SelectTrigger className="w-40">
+                        <SelectTrigger className={`${filterControlClass(roleFilter !== 'all')} w-40 shrink-0`}>
                             <SelectValue placeholder="All Roles" />
                         </SelectTrigger>
                         <SelectContent>
@@ -295,7 +292,7 @@ export default function Index({ users }: Props) {
                     </Select>
 
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="w-36">
+                        <SelectTrigger className={`${filterControlClass(statusFilter !== 'all')} w-36 shrink-0`}>
                             <SelectValue placeholder="All Status" />
                         </SelectTrigger>
                         <SelectContent>
@@ -314,9 +311,10 @@ export default function Index({ users }: Props) {
                                 setRoleFilter('all');
                                 setStatusFilter('all');
                             }}
-                            className="text-muted-foreground"
+                            className="h-9 px-3 text-gray-500 hover:text-gray-700"
                         >
-                            Clear filters
+                            <X className="w-3.5 h-3.5 mr-1" />
+                            Clear
                         </Button>
                     )}
                 </div>
@@ -448,6 +446,15 @@ export default function Index({ users }: Props) {
                                                             Edit User
                                                         </Link>
                                                     </DropdownMenuItem>
+                                                    {!user.email_verified_at && (
+                                                        <DropdownMenuItem
+                                                            onClick={() => resendInvitation(user)}
+                                                            className="cursor-pointer"
+                                                        >
+                                                            <Send className="mr-2 h-4 w-4" />
+                                                            Resend Invitation
+                                                        </DropdownMenuItem>
+                                                    )}
                                                     {user.role !== 'super_admin' && (
                                                         <>
                                                             <DropdownMenuSeparator />

@@ -39,7 +39,7 @@ class LabelController extends Controller
         $label = $project->labels()->create($validated);
 
         return response()->json([
-            'message' => 'Label created successfully',
+            'message' => 'Label created successfully.',
             'label' => $label,
         ], 201);
     }
@@ -65,7 +65,7 @@ class LabelController extends Controller
         $label->update($validated);
 
         return response()->json([
-            'message' => 'Label updated successfully',
+            'message' => 'Label updated successfully.',
             'label' => $label,
         ]);
     }
@@ -85,7 +85,7 @@ class LabelController extends Controller
         $label->delete();
 
         return response()->json([
-            'message' => 'Label deleted successfully',
+            'message' => 'Label deleted successfully.',
         ]);
     }
 }

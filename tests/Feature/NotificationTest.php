@@ -148,7 +148,7 @@ class NotificationTest extends TestCase
             ->patchJson('/api/reports/' . $report->uuid, ['action' => 'resolve', 'resolution_summary' => 'Fixed the session cookie'])
             ->assertOk();
 
-        $notification = $this->client->notifications()->first();
+        $notification = $this->otherAdmin->notifications()->first();
         $this->assertSame('Report resolved: Login is broken', $notification->data['title']);
         $this->assertStringContainsString('Resolution: Fixed the session cookie', $notification->data['message']);
     }
@@ -258,22 +258,6 @@ class NotificationTest extends TestCase
             '/projects/view/' . $this->project->uuid,
             $this->otherAdmin->notifications()->first()->data['url']
         );
-    }
-
-    public function test_new_users_get_a_welcome_notification()
-    {
-        $this->actingAs($this->otherAdmin)->post('/users', [
-            'name' => 'New Client',
-            'email' => 'new.client@example.com',
-            'password' => 'Str0ng-Passw0rd!',
-            'password_confirmation' => 'Str0ng-Passw0rd!',
-            'role' => 'client',
-        ])->assertRedirect();
-
-        $newUser = User::where('email', 'new.client@example.com')->firstOrFail();
-
-        $this->assertSame(['Welcome, New Client!'], $this->titlesFor($newUser));
-        $this->assertSame(1, $this->sentMailCount());
     }
 
     public function test_users_can_list_and_read_only_their_own_notifications()

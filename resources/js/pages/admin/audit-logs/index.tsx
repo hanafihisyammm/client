@@ -1,5 +1,7 @@
+import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Input } from '@/components/ui/input';
 import {
     Select,
@@ -17,6 +19,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import { filterControlClass } from '@/lib/utils';
 import { Head, router } from '@inertiajs/react';
 import { Search, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -61,7 +64,7 @@ const TYPE_LABELS: Record<string, string> = {
     auth: 'Sign-in',
     user: 'User',
     project: 'Project',
-    report: 'Report',
+    report: 'Issue',
     comment: 'Comment',
 };
 
@@ -134,31 +137,41 @@ export default function Index({ logs, users, filters }: Props) {
         <AppLayout>
             <Head title="Audit Log" />
 
-            <div className="space-y-6 px-4 py-2">
-                <div>
-                    <h1 className="text-3xl font-bold">Audit Log</h1>
-                    <p className="mt-1 text-muted-foreground">
-                        A record of who did what in the system, and when
-                    </p>
-                </div>
+            <div className="space-y-6">
+                <PageHeader
+                    title="Audit Log"
+                    description="A record of who did what in the system, and when"
+                />
 
-                <div className="flex flex-wrap items-center gap-4">
-                    <div className="flex items-center space-x-2">
-                        <Search className="h-4 w-4 text-muted-foreground" />
+                <div className="flex items-center gap-3">
+                    <div className="relative max-w-md min-w-40 flex-1">
+                        <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
                         <Input
                             placeholder="Search activity..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            className="w-64"
+                            className="h-9 bg-white pl-9"
                         />
+                        {search && (
+                            <button
+                                type="button"
+                                aria-label="Clear search"
+                                onClick={() => setSearch('')}
+                                className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 hover:bg-gray-100"
+                            >
+                                <X className="h-3 w-3 text-gray-400" />
+                            </button>
+                        )}
                     </div>
 
                     <Select
                         value={filters.type}
                         onValueChange={(type) => applyFilters({ type })}
                     >
-                        <SelectTrigger className="w-40">
-                            <SelectValue placeholder="Filter by type" />
+                        <SelectTrigger
+                            className={`${filterControlClass(filters.type !== 'all')} w-36 shrink-0`}
+                        >
+                            <SelectValue placeholder="Type" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Types</SelectItem>
@@ -176,8 +189,10 @@ export default function Index({ logs, users, filters }: Props) {
                         value={filters.user}
                         onValueChange={(user) => applyFilters({ user })}
                     >
-                        <SelectTrigger className="w-48">
-                            <SelectValue placeholder="Filter by user" />
+                        <SelectTrigger
+                            className={`${filterControlClass(filters.user !== 'all')} w-44 shrink-0`}
+                        >
+                            <SelectValue placeholder="User" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Users</SelectItem>
@@ -192,48 +207,32 @@ export default function Index({ logs, users, filters }: Props) {
                         </SelectContent>
                     </Select>
 
-                    <div className="flex items-center gap-2">
-                        <Input
-                            type="date"
-                            aria-label="From date"
-                            value={filters.from}
-                            max={filters.to || undefined}
-                            onChange={(e) =>
-                                applyFilters({ from: e.target.value })
-                            }
-                            className="w-40"
-                        />
-                        <span className="text-sm text-muted-foreground">
-                            to
-                        </span>
-                        <Input
-                            type="date"
-                            aria-label="To date"
-                            value={filters.to}
-                            min={filters.from || undefined}
-                            onChange={(e) =>
-                                applyFilters({ to: e.target.value })
-                            }
-                            className="w-40"
-                        />
-                    </div>
+                    <DateRangePicker
+                        aria-label="Date range"
+                        from={filters.from}
+                        to={filters.to}
+                        onChange={({ from, to }) => applyFilters({ from, to })}
+                        placeholder="Date range"
+                        className={`${filterControlClass(!!filters.from)} shrink-0 px-3 shadow-xs`}
+                    />
 
                     {hasFilters && (
                         <Button
                             variant="ghost"
                             size="sm"
                             onClick={clearFilters}
+                            className="h-9 px-3 text-gray-500 hover:text-gray-700"
                         >
-                            <X className="mr-1 h-4 w-4" />
+                            <X className="mr-1 h-3.5 w-3.5" />
                             Clear
                         </Button>
                     )}
                 </div>
 
-                <div className="rounded-lg border bg-white shadow-sm">
+                <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
                     <Table>
                         <TableHeader>
-                            <TableRow>
+                            <TableRow className="bg-slate-50/50 text-xs font-medium tracking-wider text-muted-foreground uppercase [&>th]:text-muted-foreground">
                                 <TableHead className="w-44">When</TableHead>
                                 <TableHead className="w-48">User</TableHead>
                                 <TableHead className="w-28">Type</TableHead>

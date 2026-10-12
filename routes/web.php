@@ -16,6 +16,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // User Management (Super Admin & Admin only)
     Route::resource('users', App\Http\Controllers\UserController::class);
+    Route::post('/users/{user}/invitation', [App\Http\Controllers\UserController::class, 'resendInvitation'])->name('users.invitation.resend');
     
     // Project Management (Super Admin & Admin only)
     Route::resource('projects', App\Http\Controllers\ProjectController::class)->except(['edit', 'update']);
@@ -30,6 +31,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/reports/create', [App\Http\Controllers\ReportViewController::class, 'create'])->name('reports.create');
     Route::get('/reports/{report}', [App\Http\Controllers\ReportViewController::class, 'show'])->name('reports.show');
     // Route::get('/reports/{report}/history', [App\Http\Controllers\ReportViewController::class, 'history'])->name('reports.history'); // Removed - activity timeline is now shown inline
+});
+
+// Invitation links from the "set up your account" email (signed, valid for a limited time)
+Route::middleware(['guest', 'signed:relative'])->group(function () {
+    Route::get('/invitation/{user}', [App\Http\Controllers\Auth\InvitationController::class, 'show'])->name('invitation.show');
+    Route::post('/invitation/{user}', [App\Http\Controllers\Auth\InvitationController::class, 'store'])->name('invitation.store');
 });
 
 require __DIR__.'/settings.php';

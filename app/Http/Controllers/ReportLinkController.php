@@ -84,7 +84,7 @@ class ReportLinkController extends Controller
         $link->load(['targetReport:id,uuid,title,status,priority', 'creator:id,name']);
 
         return response()->json([
-            'message' => 'Report linked successfully',
+            'message' => 'Issue linked successfully.',
             'link' => $link,
         ], 201);
     }
@@ -120,7 +120,7 @@ class ReportLinkController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Link removed successfully',
+            'message' => 'Link removed successfully.',
         ]);
     }
 }

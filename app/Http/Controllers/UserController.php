@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Inertia\Inertia;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -66,18 +67,14 @@ class UserController extends Controller
         $this->authorize('create', User::class);
 
         // Custom validation for role restrictions
+        // Only the email and role are entered here; the user sets their own name and password from the invitation email
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'role' => 'required|string|in:admin,manager,developer,client',
         ], [
-            'name.required' => 'Please enter a full name.',
             'email.required' => 'Please enter an email address.',
             'email.email' => 'Please enter a valid email address.',
             'email.unique' => 'This email address is already registered.',
-            'password.required' => 'Please enter a password.',
-            'password.confirmed' => 'Password confirmation does not match.',
             'role.required' => 'Please select a user role.',
             'role.in' => 'Please select a valid role.',
         ]);
@@ -91,20 +88,22 @@ class UserController extends Controller
         }
 
         try {
+            // The account stays "Pending" (no verified date, unusable password) until the invitation is accepted
             $newUser = User::create([
-                'name' => $validated['name'],
+                // Placeholder name from the email ("jane.tan@..." becomes "Jane Tan") until the user enters their own
+                'name' => Str::title(trim(preg_replace('/[._+\-]+/', ' ', Str::before($validated['email'], '@')))),
                 'email' => $validated['email'],
-                'password' => Hash::make($validated['password']),
+                'password' => Hash::make(Str::random(40)),
                 'role' => $validated['role'],
                 'created_by' => auth()->id(),
-                'email_verified_at' => now(),
+                'email_verified_at' => null,
             ]);
 
-            app(NotificationService::class)->notifyAccountCreated($newUser, $currentUser);
+            app(NotificationService::class)->notifyUserInvited($newUser, $currentUser);
 
             return redirect()->route('users.index')
                 ->with('flash', [
-                    'message' => "User '{$newUser->name}' created successfully as {$newUser->role}.",
+                    'message' => "Invitation sent to {$newUser->email}.",
                     'type' => 'success'
                 ]);
         } catch (\Exception $e) {
@@ -114,6 +113,25 @@ class UserController extends Controller
                 ->withInput()
                 ->withErrors(['general' => 'An error occurred while creating the user. Please try again.']);
         }
+    }
+
+    /**
+     * Send the invitation email again to a user who has not set up their account yet.
+     */
+    public function resendInvitation(User $user)
+    {
+        $this->authorize('update', $user);
+
+        if ($user->email_verified_at !== null) {
+            return back()->withErrors(['invitation' => 'This user has already set up their account.']);
+        }
+
+        app(NotificationService::class)->notifyUserInvited($user, auth()->user());
+
+        return back()->with('flash', [
+            'message' => "Invitation sent to {$user->email}.",
+            'type' => 'success'
+        ]);
     }
 
     /**

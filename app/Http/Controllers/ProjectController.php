@@ -31,7 +31,10 @@ class ProjectController extends Controller
             ->withCount([
                 'reports',
                 'reports as open_reports_count' => function ($query) {
-                    $query->whereIn('status', ['open', 'reopened']);
+                    $query->where('status', 'open');
+                },
+                'reports as reopened_reports_count' => function ($query) {
+                    $query->where('status', 'reopened');
                 },
                 'reports as in_progress_reports_count' => function ($query) {
                     $query->where('status', 'in_progress');
@@ -114,11 +117,11 @@ class ProjectController extends Controller
         ]);
 
         app(NotificationService::class)->notifyProjectAssigned($project, $user, $validated['client_ids']);
-        $this->logMembershipChange($project, $validated['client_ids'], []);
+        $memberMessage = $this->logMembershipChange($project, $validated['client_ids'], []);
 
         return redirect()->route('projects.index')
             ->with('flash', [
-                'message' => 'Project created successfully.',
+                'message' => 'Project created successfully.' . $memberMessage,
                 'type' => 'success'
             ]);
     }
@@ -269,11 +272,11 @@ class ProjectController extends Controller
         if (isset($validated['client_ids'])) {
             $synced = $project->users()->sync($validated['client_ids']);
             app(NotificationService::class)->notifyProjectAssigned($project, $user, $synced['attached']);
-            $this->logMembershipChange($project, $synced['attached'], $synced['detached']);
+            $memberMessage = $this->logMembershipChange($project, $synced['attached'], $synced['detached']);
         } else {
             $removedIds = $project->users()->pluck('users.id')->all();
             $project->users()->detach();
-            $this->logMembershipChange($project, [], $removedIds);
+            $memberMessage = $this->logMembershipChange($project, [], $removedIds);
         }
 
         // Send notifications if there were changes
@@ -281,9 +284,9 @@ class ProjectController extends Controller
             app(NotificationService::class)->notifyProjectUpdated($project, $user, $changes);
         }
 
-        $message = 'Project updated successfully.';
+        $message = 'Project updated successfully.' . $memberMessage;
         if ($closedReportsCount > 0) {
-            $message .= " {$closedReportsCount} open report(s) were automatically closed.";
+            $message .= " {$closedReportsCount} unfinished issue(s) were automatically closed.";
         }
 
         return redirect()->route('projects.index')
@@ -350,11 +353,11 @@ class ProjectController extends Controller
             }
             $synced = $project->users()->sync($syncData);
             app(NotificationService::class)->notifyProjectAssigned($project, $user, $synced['attached']);
-            $this->logMembershipChange($project, $synced['attached'], $synced['detached']);
+            $memberMessage = $this->logMembershipChange($project, $synced['attached'], $synced['detached']);
         } else {
             $removedIds = $project->users()->pluck('users.id')->all();
             $project->users()->detach();
-            $this->logMembershipChange($project, [], $removedIds);
+            $memberMessage = $this->logMembershipChange($project, [], $removedIds);
         }
 
         // Send notifications if there were changes
@@ -362,9 +365,9 @@ class ProjectController extends Controller
             app(NotificationService::class)->notifyProjectUpdated($project, $user, $changes);
         }
 
-        $message = 'Project updated successfully.';
+        $message = 'Project updated successfully.' . $memberMessage;
         if ($closedReportsCount > 0) {
-            $message .= " {$closedReportsCount} open report(s) were automatically closed.";
+            $message .= " {$closedReportsCount} unfinished issue(s) were automatically closed.";
         }
 
         return redirect()->route('projects.index')
@@ -444,12 +447,19 @@ class ProjectController extends Controller
     /**
      * Record who was added to or removed from a project in the audit log.
      */
-    private function logMembershipChange(Project $project, array $addedIds, array $removedIds): void
+    private function logMembershipChange(Project $project, array $addedIds, array $removedIds): string
     {
+        $message = '';
+
         foreach (['Added' => $addedIds, 'Removed' => $removedIds] as $verb => $ids) {
             if (empty($ids)) {
                 continue;
             }
+
+            // Sentence for the success message, e.g. " 2 clients added to project successfully."
+            $count = count($ids);
+            $message .= ' ' . ($count === 1 ? 'Client' : "{$count} clients") . ' '
+                . strtolower($verb) . ' ' . ($verb === 'Added' ? 'to' : 'from') . ' project successfully.';
 
             $names = User::whereIn('id', $ids)->orderBy('name')->pluck('name')->implode(', ');
             $preposition = $verb === 'Added' ? 'to' : 'from';
@@ -462,5 +472,7 @@ class ProjectController extends Controller
                 $project->name
             );
         }
+
+        return $message;
     }
 }

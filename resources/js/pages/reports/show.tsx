@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import AppLayout from '@/layouts/app-layout'
 import { getCsrfToken } from '@/lib/csrf'
+import { flashError, flashSuccess } from '@/lib/flash'
+import { goBack } from '@/lib/navigation'
 
 interface ReportLabel {
   id: number
@@ -231,6 +233,7 @@ interface PageProps extends Record<string, unknown> {
   report: Report
   userRole: 'client' | 'admin' | 'super_admin' | 'manager' | 'developer'
   userId: number
+  canReview: boolean
 }
 
 const statusConfig = {
@@ -303,7 +306,7 @@ function formatTimeRemaining(minutes: number | null): string {
 }
 
 export default function ReportShow() {
-  const { report: initialReport, userRole, userId } = usePage<PageProps>().props
+  const { report: initialReport, userRole, userId, canReview } = usePage<PageProps>().props
   const [report, setReport] = useState<Report>(initialReport)
   const [loading, setLoading] = useState(false)
   const [newComment, setNewComment] = useState('')
@@ -408,8 +411,11 @@ export default function ReportShow() {
   const isReporter = Number(report.reporter.id) === Number(userId)
   const canStartProgress = isTeamMember && (report.status === 'open' || report.status === 'reopened')
   const canResolve = isTeamMember && report.status === 'in_progress'
-  const canClose = (report.status === 'resolved' || report.status === 'open') && (isTeamMember || (userRole === 'client' && isReporter))
-  const canReopen = (report.status === 'resolved' || report.status === 'closed') && (isTeamMember || (userRole === 'client' && isReporter))
+  // Resolved means "waiting for the client": a reviewing client confirms the fix (closes it) or rejects it (reopens it)
+  const awaitingReview = report.status === 'resolved'
+  const canConfirmFix = awaitingReview && canReview
+  const canClose = (report.status === 'resolved' && isTeamMember) || (report.status === 'open' && (isTeamMember || (userRole === 'client' && isReporter)))
+  const canReopen = (report.status === 'closed' && (isTeamMember || canReview)) || (report.status === 'resolved' && isTeamMember)
   const canEdit = isTeamMember || (userRole === 'client' && isReporter && report.status === 'open')
   const canComment = isTeamMember || (userRole === 'client' && isReporter)
 
@@ -439,6 +445,7 @@ export default function ReportShow() {
 
       const result = await response.json()
       if (response.ok) {
+        flashSuccess(result.message, 'Issue updated successfully.')
         setReport(result.report)
         setIsEditing(false)
         setShowResolveModal(false)
@@ -453,10 +460,10 @@ export default function ReportShow() {
           due_date: result.report.due_date || '',
         })
       } else {
-        alert(result.message || 'Action failed')
+        flashError(result.message || 'Action failed')
       }
     } catch (error) {
-      alert('Network error. Please try again.')
+      flashError('Network error. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -502,12 +509,13 @@ export default function ReportShow() {
 
       const result = await response.json()
       if (response.ok) {
+        flashSuccess(result.message, 'Attachments uploaded successfully.')
         setReport(result.report)
       } else {
-        alert(result.message || 'Failed to upload attachments')
+        flashError(result.message || 'Failed to upload attachments')
       }
     } catch (error) {
-      alert('Network error. Please try again.')
+      flashError('Network error. Please try again.')
     } finally {
       setUploading(false)
       if (fileInputRef.current) {
@@ -571,7 +579,7 @@ export default function ReportShow() {
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="outline" size="sm" onClick={() => router.get('/dashboard')}>
+            <Button variant="outline" size="sm" onClick={() => goBack('/dashboard')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
@@ -619,25 +627,25 @@ export default function ReportShow() {
           </div>
           <div className="flex gap-2">
             {canStartProgress && (
-              <Button onClick={() => handleAction('start_progress')} disabled={loading} className="bg-amber-600 hover:bg-amber-700">
+              <Button onClick={() => handleAction('start_progress')} disabled={loading}>
                 <Play className="w-4 h-4 mr-2" />
                 Start Progress
               </Button>
             )}
             {canResolve && (
-              <Button onClick={() => setShowResolveModal(true)} disabled={loading} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={() => setShowResolveModal(true)} disabled={loading}>
                 <CheckCircle2 className="w-4 h-4 mr-2" />
                 Resolve
               </Button>
             )}
             {canClose && (
-              <Button onClick={() => handleAction('close')} disabled={loading} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={() => handleAction('close')} disabled={loading} variant="outline" className="bg-white">
                 <CheckCircle2 className="w-4 h-4 mr-2" />
                 Close
               </Button>
             )}
             {canReopen && (
-              <Button onClick={() => setShowReopenModal(true)} disabled={loading} variant="destructive">
+              <Button onClick={() => setShowReopenModal(true)} disabled={loading} variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800">
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Reopen
               </Button>
@@ -649,6 +657,40 @@ export default function ReportShow() {
             )}
           </div>
         </div>
+
+        {/* Review step: a resolved issue is not closed until the client confirms the fix */}
+        {canConfirmFix && (
+          <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-purple-900">This issue has been resolved</h2>
+                <p className="mt-1 text-sm text-purple-800">
+                  Please review and confirm whether the issue is fixed.
+                </p>
+                {report.resolution_summary && (
+                  <p className="mt-2 text-sm text-purple-900">
+                    <span className="font-medium">Resolution:</span> {report.resolution_summary}
+                  </p>
+                )}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button onClick={() => handleAction('close')} disabled={loading}>
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Confirm Fixed
+                </Button>
+                <Button onClick={() => setShowReopenModal(true)} disabled={loading} variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800">
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Not Fixed
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+        {awaitingReview && !canConfirmFix && (
+          <div className="rounded-xl border border-purple-200 bg-purple-50 px-5 py-3 text-sm text-purple-800">
+            Resolved and waiting for the client to review. It will be closed once the client confirms the fix.
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4">
@@ -1220,7 +1262,7 @@ export default function ReportShow() {
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setShowResolveModal(false)}>Cancel</Button>
-                <Button onClick={() => handleAction('resolve', { resolution_summary: resolutionSummary })} disabled={loading} className="bg-purple-600 hover:bg-purple-700">
+                <Button onClick={() => handleAction('resolve', { resolution_summary: resolutionSummary })} disabled={loading}>
                   {loading ? 'Resolving...' : 'Resolve Issue'}
                 </Button>
               </div>

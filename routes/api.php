@@ -73,7 +73,7 @@ Route::middleware('auth')->group(function () {
         ]);
         $report->labels()->sync($validated['label_ids']);
         return response()->json([
-            'message' => 'Labels updated successfully',
+            'message' => 'Labels updated successfully.',
             'labels' => $report->labels,
         ]);
     });

@@ -124,6 +124,14 @@ class ReportController extends Controller
             return response()->json(['message' => 'Project not found'], 404);
         }
 
+        // New issues can only be raised against a project that is still active
+        if (!$project->isActive()) {
+            return response()->json([
+                'message' => 'Issues can only be created in an active project.',
+                'errors' => ['project_id' => ['This project is ' . $project->status . '. Choose an active project.']],
+            ], 422);
+        }
+
         DB::beginTransaction();
         try {
             $report = Report::create([
@@ -167,7 +175,7 @@ class ReportController extends Controller
             app(NotificationService::class)->notifyReportCreated($report, $user);
 
             return response()->json([
-                'message' => 'Report created successfully',
+                'message' => 'Issue created successfully.',
                 'report' => $report->load(['reporter:id,name,email', 'attachments'])
             ], 201);
 
@@ -230,11 +238,15 @@ class ReportController extends Controller
     {
         $user = Auth::user();
 
-        if ($user->isClient() && $report->reported_by !== $user->id) {
+        $action = $request->input('action');
+        $message = 'Issue updated successfully.';
+
+        // Clients can only act on reports they created, except that any client on the
+        // project may review a resolved report (confirm the fix or reopen it)
+        $isReview = in_array($action, ['close', 'reopen', 'transition'], true) && $report->canBeReviewedBy($user);
+        if ($user->isClient() && $report->reported_by !== $user->id && !$isReview) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
-
-        $action = $request->input('action');
 
         switch ($action) {
             // Start progress on an issue (open/reopened -> in_progress)
@@ -256,6 +268,8 @@ class ReportController extends Controller
 
                 // Record first response for SLA
                 $report->recordFirstResponse();
+
+                $message = 'Issue moved to In Progress.';
                 break;
 
             // Resolve an issue (in_progress -> resolved)
@@ -276,14 +290,20 @@ class ReportController extends Controller
 
                 // Record resolution time for SLA
                 $report->recordResolution();
+
+                $message = 'Issue marked as resolved.';
                 break;
 
             // Close an issue (resolved -> closed) - Client confirms fix works
             case 'close':
                 // Allow clients who own the report, or admins to close
-                if (!$user->isAdmin() && $user->role !== 'super_admin' &&
-                    !($user->isClient() && $report->reported_by === $user->id)) {
+                if (!$user->isAdmin() && $user->role !== 'super_admin' && !$report->canBeReviewedBy($user)) {
                     return response()->json(['message' => 'Not authorized to close this issue'], 403);
+                }
+
+                // A client who did not report the issue can only confirm a fix, not close open work
+                if ($user->isClient() && $report->reported_by !== $user->id && $report->status !== Report::STATUS_RESOLVED) {
+                    return response()->json(['message' => 'Only resolved issues can be confirmed'], 403);
                 }
 
                 if (!$report->canTransitionTo(Report::STATUS_CLOSED)) {
@@ -291,13 +311,14 @@ class ReportController extends Controller
                 }
 
                 $report->close($user);
+
+                $message = 'Issue closed successfully.';
                 break;
 
             // Reopen an issue (resolved/closed -> reopened) - Client says fix didn't work
             case 'reopen':
                 // Allow clients who own the report, or admins to reopen
-                if (!$user->isAdmin() && $user->role !== 'super_admin' &&
-                    !($user->isClient() && $report->reported_by === $user->id)) {
+                if (!$user->isAdmin() && $user->role !== 'super_admin' && !$report->canBeReviewedBy($user)) {
                     return response()->json(['message' => 'Not authorized to reopen this issue'], 403);
                 }
 
@@ -319,6 +340,8 @@ class ReportController extends Controller
                         'comment' => $validated['comment'],
                     ]);
                 }
+
+                $message = 'Issue reopened successfully.';
                 break;
 
             // Generic status transition
@@ -330,12 +353,34 @@ class ReportController extends Controller
 
                 if (!$report->canTransitionTo($validated['new_status'])) {
                     return response()->json([
-                        'message' => 'Invalid status transition',
+                        'message' => 'An issue cannot move from ' . $report->getStatusLabel() . ' to ' . (Report::STATUS_LABELS[$validated['new_status']] ?? $validated['new_status']) . '.',
                         'valid_transitions' => $report->getValidTransitions()
                     ], 400);
                 }
 
+                if ($denied = $this->statusChangeDeniedReason($user, $report, $validated['new_status'])) {
+                    return response()->json(['message' => $denied], 403);
+                }
+
                 $report->transitionTo($validated['new_status'], $user, $validated['resolution_summary'] ?? null);
+
+                // Same follow-up as the dedicated "start progress" and "resolve" actions
+                if ($validated['new_status'] === Report::STATUS_IN_PROGRESS) {
+                    if (!$report->assigned_to) {
+                        $report->update(['assigned_to' => $user->id]);
+                    }
+                    $report->recordFirstResponse();
+                } elseif ($validated['new_status'] === Report::STATUS_RESOLVED) {
+                    $report->recordResolution();
+                }
+
+                $message = match ($validated['new_status']) {
+                    Report::STATUS_RESOLVED => 'Issue marked as resolved.',
+                    Report::STATUS_CLOSED => 'Issue closed successfully.',
+                    Report::STATUS_REOPENED => 'Issue reopened successfully.',
+                    Report::STATUS_IN_PROGRESS => 'Issue moved to In Progress.',
+                    default => 'Issue moved back to Open.',
+                };
                 break;
 
             case 'update_report':
@@ -447,6 +492,8 @@ class ReportController extends Controller
                 } elseif (!empty($changes)) {
                     app(NotificationService::class)->notifyReportUpdated($report, $user, $changes);
                 }
+
+                $message = 'Issue updated successfully.';
                 break;
 
             case 'close_report':
@@ -478,6 +525,8 @@ class ReportController extends Controller
                 // Send notification for status change
                 $report->load('project');
                 app(NotificationService::class)->notifyReportStatusChanged($report, $user, $oldStatus, 'closed');
+
+                $message = 'Issue closed successfully.';
                 break;
 
             case 'add_comment':
@@ -505,6 +554,8 @@ class ReportController extends Controller
                 // Send notification for new comment
                 $report->load('project', 'reporter');
                 app(NotificationService::class)->notifyCommentAdded($report, $comment, $user);
+
+                $message = 'Comment added successfully.';
                 break;
 
             case 'assign':
@@ -537,6 +588,8 @@ class ReportController extends Controller
                     $report->load('project');
                     app(NotificationService::class)->notifyReportAssigned($report, $user, $newAssignee);
                 }
+
+                $message = $newAssignee ? "Issue assigned to {$newAssignee->name}." : 'Issue unassigned.';
                 break;
 
             case 'add_attachments':
@@ -573,6 +626,8 @@ class ReportController extends Controller
                         'action' => 'added_attachments',
                     ]);
                 }
+
+                $message = 'Attachments uploaded successfully.';
                 break;
 
             default:
@@ -596,9 +651,38 @@ class ReportController extends Controller
         $freshReport->sla = $freshReport->getSlaInfo();
 
         return response()->json([
-            'message' => 'Report updated successfully',
+            'message' => $message,
             'report' => $freshReport
         ]);
+    }
+
+    /**
+     * Why this user may not move the report to the given status, or null when they may.
+     * Mirrors the rules of the dedicated start progress / resolve / close / reopen actions.
+     */
+    private function statusChangeDeniedReason(\App\Models\User $user, Report $report, string $newStatus): ?string
+    {
+        $isTeamMember = in_array($user->role, ['super_admin', 'admin', 'manager', 'developer'], true);
+
+        switch ($newStatus) {
+            case Report::STATUS_CLOSED:
+                if ($user->isAdmin()) {
+                    return null;
+                }
+                if (!$report->canBeReviewedBy($user)) {
+                    return 'Not authorized to close this issue';
+                }
+                // A client who did not report the issue can only confirm a fix, not close open work
+                return $report->reported_by !== $user->id && $report->status !== Report::STATUS_RESOLVED
+                    ? 'Only resolved issues can be confirmed'
+                    : null;
+
+            case Report::STATUS_REOPENED:
+                return $user->isAdmin() || $report->canBeReviewedBy($user) ? null : 'Not authorized to reopen this issue';
+
+            default:
+                return $isTeamMember ? null : 'Only team members can move an issue to this status';
+        }
     }
 
     public function destroy(Report $report): JsonResponse
@@ -617,6 +701,6 @@ class ReportController extends Controller
 
         $report->delete();
 
-        return response()->json(['message' => 'Report deleted successfully']);
+        return response()->json(['message' => 'Issue deleted successfully.']);
     }
 }

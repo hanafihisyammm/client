@@ -13,8 +13,25 @@ interface DatePickerProps {
   placeholder?: string
   disabled?: boolean
   minDate?: Date
+  /** Latest date that can be picked. No limit when left out. */
+  maxDate?: Date
+  /** How the chosen date is shown on the button (date-fns format). */
+  displayFormat?: string
   className?: string
   id?: string
+  "aria-label"?: string
+}
+
+/** Earliest date for pickers that must allow the past, such as date filters. */
+export const ANY_PAST_DATE = new Date(2000, 0, 1)
+
+// "2026-10-12" must mean that day in the viewer's own timezone, not UTC midnight
+function toDate(value: string | Date): Date {
+  if (typeof value === "string") {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+    if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  }
+  return new Date(value)
 }
 
 export function DatePicker({
@@ -23,11 +40,14 @@ export function DatePicker({
   placeholder = "Pick a date",
   disabled = false,
   minDate,
+  maxDate,
+  displayFormat = "PPP",
   className,
-  id
+  id,
+  "aria-label": ariaLabel
 }: DatePickerProps) {
   const [date, setDate] = React.useState<Date | undefined>(
-    value ? new Date(value) : undefined
+    value ? toDate(value) : undefined
   )
 
   // Default min date to today if not provided
@@ -36,7 +56,9 @@ export function DatePicker({
   const handleDateSelect = (selectedDate: Date | undefined) => {
     if (selectedDate) {
       // Validate that the selected date is not before minimum date
-      if (isAfter(selectedDate, minimumDate) || selectedDate.getTime() === minimumDate.getTime()) {
+      const notTooEarly = isAfter(selectedDate, minimumDate) || selectedDate.getTime() === minimumDate.getTime()
+      const notTooLate = !maxDate || !isAfter(startOfDay(selectedDate), startOfDay(maxDate))
+      if (notTooEarly && notTooLate) {
         setDate(selectedDate)
         onChange(format(selectedDate, "yyyy-MM-dd"))
       }
@@ -48,7 +70,7 @@ export function DatePicker({
 
   React.useEffect(() => {
     if (value) {
-      setDate(new Date(value))
+      setDate(toDate(value))
     } else {
       setDate(undefined)
     }
@@ -59,6 +81,7 @@ export function DatePicker({
       <PopoverTrigger asChild>
         <Button
           id={id}
+          aria-label={ariaLabel}
           variant="outline"
           className={cn(
             "w-full justify-start text-left font-normal",
@@ -68,7 +91,7 @@ export function DatePicker({
           disabled={disabled}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "PPP") : <span>{placeholder}</span>}
+          {date ? format(date, displayFormat) : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
@@ -76,7 +99,7 @@ export function DatePicker({
           mode="single"
           selected={date}
           onSelect={handleDateSelect}
-          disabled={(date) => isAfter(minimumDate, date)}
+          disabled={(date) => isAfter(minimumDate, date) || (!!maxDate && isAfter(startOfDay(date), startOfDay(maxDate)))}
           initialFocus
         />
       </PopoverContent>

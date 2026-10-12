@@ -53,7 +53,8 @@ class Report extends Model
     ];
 
     /**
-     * Statuses where no further work is expected on a report.
+     * Statuses where the team's work is done, so a report no longer counts as overdue.
+     * Resolved is not final: it is waiting for the client to review and confirm.
      */
     public const FINISHED_STATUSES = [self::STATUS_RESOLVED, self::STATUS_CLOSED];
 
@@ -245,6 +246,26 @@ class Report extends Model
     public function isClosed(): bool
     {
         return $this->status === self::STATUS_CLOSED;
+    }
+
+    /**
+     * Whether this client may review a resolved report: confirm the fix (close it) or reject it (reopen it).
+     * That is the client who reported it, or any client assigned to its project.
+     */
+    public function canBeReviewedBy(User $user): bool
+    {
+        if (!$user->isClient()) {
+            return false;
+        }
+
+        if ($this->reported_by === $user->id) {
+            return true;
+        }
+
+        return $this->project_id !== null && \Illuminate\Support\Facades\DB::table('project_users')
+            ->where('project_id', $this->project_id)
+            ->where('user_id', $user->id)
+            ->exists();
     }
 
     /**

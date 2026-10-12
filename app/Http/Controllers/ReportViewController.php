@@ -20,7 +20,8 @@ class ReportViewController extends Controller
             $projectIds = \DB::table('project_users')
                 ->where('user_id', $user->id)
                 ->pluck('project_id');
-            $projects = Project::whereIn('id', $projectIds)->where('status', 'active')->select('id', 'name')->get();
+            // Every assigned project is listed; the page only lets active ones be chosen
+            $projects = Project::whereIn('id', $projectIds)->select('id', 'name', 'prefix', 'status')->orderBy('name')->get();
 
             // If user has no projects assigned, prevent report creation
             if ($projects->isEmpty()) {
@@ -30,8 +31,8 @@ class ReportViewController extends Controller
                 ]);
             }
         } else {
-            // Admins, super admins, and managers can see all active projects
-            $projects = Project::where('status', 'active')->select('id', 'name')->get();
+            // Admins, super admins, and managers see every project; the page only lets active ones be chosen
+            $projects = Project::select('id', 'name', 'prefix', 'status')->orderBy('name')->get();
         }
 
         return Inertia::render('reports/create', [
@@ -87,7 +88,9 @@ class ReportViewController extends Controller
         return Inertia::render('reports/show', [
             'report' => $reportData,
             'userRole' => $user->role,
-            'userId' => $user->id
+            'userId' => $user->id,
+            // Clients who may confirm or reject the fix once the issue is resolved
+            'canReview' => $report->canBeReviewedBy($user),
         ]);
     }
 

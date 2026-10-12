@@ -14,7 +14,7 @@ export default function NoProjects({ userRole, message }: PageProps) {
         <AppLayout>
             <Head title="No Projects Assigned" />
             
-            <div className="space-y-6 px-4 py-6">
+            <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center gap-4">
                     <Button 
@@ -27,7 +27,7 @@ export default function NoProjects({ userRole, message }: PageProps) {
                     </Button>
                     
                     <div className="flex-1">
-                        <h1 className="text-2xl font-bold">Create New Report</h1>
+                        <h1 className="text-3xl font-extrabold tracking-tight">Create Issue</h1>
                         <p className="text-muted-foreground">
                             Report an issue or request a new feature
                         </p>

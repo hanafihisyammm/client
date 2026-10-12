@@ -63,7 +63,7 @@ class TimeEntryController extends Controller
         $timeEntry->load('user:id,name,email');
 
         return response()->json([
-            'message' => 'Time logged successfully',
+            'message' => 'Time logged successfully.',
             'time_entry' => $timeEntry,
             'total_hours' => $report->getTotalTimeSpent(),
         ], 201);
@@ -110,7 +110,7 @@ class TimeEntryController extends Controller
         $timeEntry->load('user:id,name,email');
 
         return response()->json([
-            'message' => 'Time entry updated successfully',
+            'message' => 'Time entry updated successfully.',
             'time_entry' => $timeEntry,
             'total_hours' => $report->getTotalTimeSpent(),
         ]);
@@ -141,7 +141,7 @@ class TimeEntryController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Time entry deleted successfully',
+            'message' => 'Time entry deleted successfully.',
             'total_hours' => $report->getTotalTimeSpent(),
         ]);
     }

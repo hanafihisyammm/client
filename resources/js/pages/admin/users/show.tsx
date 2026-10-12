@@ -126,7 +126,7 @@ export default function Show({ user }: Props) {
                             </Button>
                         </Link>
                         <div>
-                            <h1 className="text-2xl font-semibold tracking-tight">User Profile</h1>
+                            <h1 className="text-3xl font-extrabold tracking-tight">User Profile</h1>
                             <p className="text-muted-foreground text-sm mt-1">
                                 View user details and information
                             </p>
