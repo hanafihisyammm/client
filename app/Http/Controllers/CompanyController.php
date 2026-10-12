@@ -146,6 +146,8 @@ class CompanyController extends Controller
             'status' => 'required|in:active,inactive',
             'manager_id' => 'nullable|integer|exists:users,id',
             'manager_email' => 'nullable|string|email|max:255',
+            // What becomes of the manager being replaced: taken out of the company, or kept in it as staff
+            'previous_manager' => 'nullable|in:remove,staff',
         ], [
             'name.unique' => 'A client company with this name already exists.',
         ]);
@@ -159,7 +161,12 @@ class CompanyController extends Controller
                 || (!empty($validated['manager_id']) && (int) $validated['manager_id'] !== $company->manager_id);
 
             if ($wantsNewManager) {
-                $this->assignManager($company, $validated['manager_id'] ?? null, $validated['manager_email'] ?? null);
+                $this->assignManager(
+                    $company,
+                    $validated['manager_id'] ?? null,
+                    $validated['manager_email'] ?? null,
+                    $validated['previous_manager'] ?? 'remove'
+                );
                 $managerChanged = true;
             }
         });
@@ -207,11 +214,15 @@ class CompanyController extends Controller
     }
 
     /**
-     * Put one manager in charge of the company: an existing manager who has no company,
-     * or a new manager account invited by email. The previous manager, if any, is left
-     * without a company (and so without access) until an admin places them elsewhere.
+     * Put one manager in charge of the company. That can be:
+     *   - an existing manager who has no company,
+     *   - one of this company's own active staff, who is promoted to manager, or
+     *   - a new manager account invited by email.
+     *
+     * The previous manager, if any, either leaves the company (no company, and so no access,
+     * until an admin places them elsewhere) or stays in it as an ordinary staff member.
      */
-    private function assignManager(Company $company, ?int $managerId, ?string $managerEmail): void
+    private function assignManager(Company $company, ?int $managerId, ?string $managerEmail, string $previousManager = 'remove'): void
     {
         $manager = null;
         $isNew = false;
@@ -240,7 +251,10 @@ class CompanyController extends Controller
             ]);
         }
 
-        if (!$manager->isManager() || !$manager->isActive()) {
+        // Staff can be promoted, but only within their own company: never across companies
+        $promoting = $manager->isStaff() && $company->exists && $manager->company_id === $company->id;
+
+        if (!$manager->isActive() || (!$manager->isManager() && !$promoting)) {
             throw ValidationException::withMessages([
                 $managerEmail ? 'manager_email' : 'manager_id' => 'This person is not an active manager, so they cannot be put in charge of a company.',
             ]);
@@ -255,7 +269,16 @@ class CompanyController extends Controller
         }
 
         if ($company->manager_id && $company->manager_id !== $manager->id) {
-            User::where('id', $company->manager_id)->first()?->update(['company_id' => null]);
+            $previous = User::find($company->manager_id);
+
+            // Staying on as staff: same company, no projects until someone assigns them
+            $previous?->update($previousManager === 'staff' ? ['role' => 'staff'] : ['company_id' => null]);
+        }
+
+        if ($promoting) {
+            // A manager is on every project of the company, so their individual assignments go
+            $manager->projects()->detach();
+            $manager->update(['role' => 'manager']);
         }
 
         $manager->update(['company_id' => $company->id]);

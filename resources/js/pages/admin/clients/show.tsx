@@ -42,6 +42,8 @@ interface StaffMember {
     deactivated_at: string | null;
     email_verified_at: string | null;
     projects: ProjectSummary[];
+    /** The company's manager, listed with the team. They are on every project and are not managed here. */
+    isManager?: boolean;
 }
 
 interface Props {
@@ -169,6 +171,10 @@ export default function ClientShow({ company, staff, projects, counts, canManage
         () => canManageCompany && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('edit') === '1',
     );
     const [managerChoice, setManagerChoice] = useState(KEEP_MANAGER);
+    // What becomes of the manager being replaced: 'remove' from the company, or stay as 'staff'
+    const [previousManager, setPreviousManager] = useState<'remove' | 'staff'>('remove');
+    // Active staff of this company, any of whom can be promoted to manager
+    const promotableStaff = staff.filter((member) => !member.deactivated_at);
 
     // Deleting a project brings the viewer back here with ?tab=projects
     const [tab, setTab] = useState<Tab>(() =>
@@ -198,9 +204,31 @@ export default function ClientShow({ company, staff, projects, counts, canManage
         setProjectPage(1);
     };
 
+    // The team is the manager plus the staff. The manager is on every project of the company.
+    const team = useMemo<StaffMember[]>(() => {
+        const manager = company.manager;
+
+        return manager
+            ? [
+                  {
+                      id: manager.id,
+                      uuid: '',
+                      name: manager.name,
+                      email: manager.email,
+                      deactivated_at: manager.deactivated_at ?? null,
+                      email_verified_at: manager.email_verified_at ?? null,
+                      projects,
+                      isManager: true,
+                  },
+                  ...staff,
+              ]
+            : staff;
+    }, [company.manager, staff, projects]);
+    const activeTeam = team.filter((member) => !member.deactivated_at).length;
+
     const staffPageData = useMemo(() => {
         const search = staffSearch.trim().toLowerCase();
-        const rows = staff
+        const rows = team
             .filter(
                 (member) =>
                     (!search || member.name.toLowerCase().includes(search) || member.email.toLowerCase().includes(search)) &&
@@ -222,7 +250,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
             });
 
         return paginate(rows, staffPage);
-    }, [staff, staffSearch, staffStatus, staffProject, staffSort, staffPage]);
+    }, [team, staffSearch, staffStatus, staffProject, staffSort, staffPage]);
 
     const projectPageData = useMemo(() => {
         const search = projectSearch.trim().toLowerCase();
@@ -295,9 +323,9 @@ export default function ClientShow({ company, staff, projects, counts, canManage
             name: form.name,
             status: form.status,
             ...(managerChoice === NEW_MANAGER
-                ? { manager_email: form.manager_email }
+                ? { manager_email: form.manager_email, previous_manager: previousManager }
                 : managerChoice !== KEEP_MANAGER
-                  ? { manager_id: Number(managerChoice) }
+                  ? { manager_id: Number(managerChoice), previous_manager: previousManager }
                   : {}),
         }));
         settingsForm.patch(base, {
@@ -305,6 +333,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
             onSuccess: () => {
                 setShowSettings(false);
                 setManagerChoice(KEEP_MANAGER);
+                setPreviousManager('remove');
             },
         });
     };
@@ -362,8 +391,8 @@ export default function ClientShow({ company, staff, projects, counts, canManage
 
                 {/* Counts */}
                 <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                    <StatCard icon={Users} label="Staff" value={counts.active_staff} hint={`${counts.staff} in total`} />
-                    <StatCard icon={FolderKanban} label="Projects" value={counts.active_projects} hint={`${counts.projects} in total`} />
+                    <StatCard icon={Users} label="Team" value={team.length} hint={`${activeTeam} active`} />
+                    <StatCard icon={FolderKanban} label="Projects" value={counts.projects} hint={`${counts.active_projects} active`} />
                     <StatCard icon={AlertCircle} label="Open Issues" value={counts.open_issues} hint="Not yet closed" color="text-blue-600 bg-blue-50" />
                     <StatCard icon={FileText} label="All Issues" value={counts.issues} hint="Since the start" />
                 </div>
@@ -374,7 +403,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                         <div role="tablist" aria-label="Company details" className="flex gap-6">
                             {(
                                 [
-                                    ['staff', 'Staff', staff.length],
+                                    ['staff', 'Team', team.length],
                                     ['projects', 'Projects', projects.length],
                                 ] as const
                             ).map(([key, label, count]) => (
@@ -415,7 +444,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                     {tab === 'staff' ? (
                         <>
                             <div className="flex flex-wrap items-center gap-3 border-b px-5 py-3">
-                                <SearchBox value={staffSearch} onChange={(value) => { setStaffSearch(value); setStaffPage(1); }} placeholder="Search staff by name or email..." />
+                                <SearchBox value={staffSearch} onChange={(value) => { setStaffSearch(value); setStaffPage(1); }} placeholder="Search the team by name or email..." />
                                 <Select value={staffStatus} onValueChange={(value) => { setStaffStatus(value); setStaffPage(1); }}>
                                     <SelectTrigger aria-label="Filter by status" className={`${filterControlClass(staffStatus !== 'all')} w-auto min-w-[140px] shrink-0`}>
                                         <SelectValue />
@@ -465,7 +494,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                     {staffPageData.total === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                                                {staff.length === 0
+                                                {team.length === 0
                                                     ? canManageStaff
                                                         ? 'No staff yet. Add the first staff account.'
                                                         : 'No staff yet. An admin adds staff accounts for this company.'
@@ -475,7 +504,9 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                     ) : (
                                         staffPageData.rows.map((member) => (
                                             <TableRow key={member.id} className={member.deactivated_at ? 'opacity-60' : ''}>
-                                                {canAssignStaff && (
+                                                {/* The manager is changed from Edit Client, not from this list */}
+                                                {canAssignStaff && member.isManager && <TableCell />}
+                                                {canAssignStaff && !member.isManager && (
                                                     <TableCell>
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
@@ -515,11 +546,20 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                                     </TableCell>
                                                 )}
                                                 <TableCell>
-                                                    <p className="font-medium">{member.name}</p>
+                                                    <p className="flex items-center gap-2 font-medium">
+                                                        {member.name}
+                                                        {member.isManager && (
+                                                            <span className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700">
+                                                                Manager
+                                                            </span>
+                                                        )}
+                                                    </p>
                                                     <p className="text-xs text-muted-foreground">{member.email}</p>
                                                 </TableCell>
                                                 <TableCell className="whitespace-normal">
-                                                    {member.projects.length === 0 ? (
+                                                    {member.isManager ? (
+                                                        <span className="text-sm text-muted-foreground">All projects</span>
+                                                    ) : member.projects.length === 0 ? (
                                                         <span className="text-sm text-muted-foreground">Not on any project</span>
                                                     ) : (
                                                         <div className="flex flex-wrap gap-1.5">
@@ -539,7 +579,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                     )}
                                 </TableBody>
                             </Table>
-                            <TablePagination page={staffPageData} noun="staff" onPageChange={setStaffPage} />
+                            <TablePagination page={staffPageData} noun="team members" onPageChange={setStaffPage} />
                         </>
                     ) : (
                         <>
@@ -795,6 +835,13 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                     <SelectItem value={KEEP_MANAGER}>
                                         {company.manager ? `Keep ${company.manager.name}` : 'No manager assigned'}
                                     </SelectItem>
+                                    {/* Someone already in this company */}
+                                    {promotableStaff.map((member) => (
+                                        <SelectItem key={member.id} value={String(member.id)}>
+                                            Promote {member.name} ({member.email}), currently staff
+                                        </SelectItem>
+                                    ))}
+                                    {/* A manager who has no company yet */}
                                     {availableManagers.map((manager) => (
                                         <SelectItem key={manager.id} value={String(manager.id)}>
                                             Change to {manager.name} ({manager.email})
@@ -804,12 +851,26 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                 </SelectContent>
                             </Select>
                             <InputError message={(settingsForm.errors as Record<string, string>).manager_id} />
-                            {managerChoice !== KEEP_MANAGER && company.manager && (
-                                <p className="text-sm text-amber-700">
-                                    {company.manager.name} will lose access to this company and will have no company until an admin assigns one.
-                                </p>
-                            )}
                         </div>
+                        {managerChoice !== KEEP_MANAGER && company.manager && (
+                            <div className="space-y-2">
+                                <Label htmlFor="settings-previous-manager">What happens to {company.manager.name}</Label>
+                                <Select value={previousManager} onValueChange={(value: 'remove' | 'staff') => setPreviousManager(value)}>
+                                    <SelectTrigger id="settings-previous-manager">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="remove">Leaves this company</SelectItem>
+                                        <SelectItem value="staff">Stays in this company as staff</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-sm text-amber-700">
+                                    {previousManager === 'staff'
+                                        ? `${company.manager.name} will become staff here and will see only the projects they are then assigned to.`
+                                        : `${company.manager.name} will lose access to this company and will have no company until an admin assigns one.`}
+                                </p>
+                            </div>
+                        )}
                         {managerChoice === NEW_MANAGER && (
                             <div className="space-y-2">
                                 <Label htmlFor="settings-manager-email">New manager's email</Label>

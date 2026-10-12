@@ -126,9 +126,21 @@ async function inspect(name, theme) {
     console.log(`${flag} ${theme.padEnd(5)} ${name.padEnd(34)} low contrast: ${String(result.failures.length).padStart(2)}   light surfaces: ${result.surfaces.length}`);
 }
 
+// Signed out, the theme comes from the browser's cookie. Signed in, it is the account's saved
+// choice, which wins over the cookie, so it has to be set there (and put back afterwards).
+let signedIn = false;
+let originalChoice = null;
+
+const saveChoice = (theme) => page.evaluate(`fetch('/settings/appearance', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ appearance: ${JSON.stringify(theme)} }),
+}).then((response) => response.status)`);
+
 const setTheme = async (theme) => {
     await page.cookie('appearance', theme, BASE);
     await page.systemTheme(theme);
+    if (signedIn) await saveChoice(theme);
 };
 
 const visitIn = (theme) => async (name, path, actions = async () => {}) => {
@@ -152,6 +164,10 @@ try {
 
     // ---- Super Admin: every area of the app
     await page.login(BASE, 'samantha@sidracore.com', 'password');
+    signedIn = true;
+    // A fresh page load, so this is the account's saved choice and not the login page's
+    await page.goto(BASE + '/settings/appearance');
+    originalChoice = await page.evaluate('document.documentElement.dataset.appearance');
     await page.goto(BASE + '/projects');
     const project = (await props(page)).projects[0];
     await page.goto(BASE + '/clients');
@@ -209,6 +225,8 @@ try {
         }
     }
 } finally {
+    // Leave the account's own theme as it was found
+    if (signedIn && originalChoice) await saveChoice(originalChoice).catch(() => {});
     await page.close();
 }
 

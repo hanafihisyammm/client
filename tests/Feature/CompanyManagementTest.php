@@ -116,6 +116,109 @@ class CompanyManagementTest extends TestCase
         $this->assertSame([], $this->actingAs($oldManager->fresh())->getJson('/api/reports')->json('data'));
     }
 
+    public function test_an_admin_can_promote_one_of_the_companys_staff_to_manager()
+    {
+        foreach (['admin', 'super_admin'] as $role) {
+            $admin = $this->makeAdmin($role);
+            [$company, $oldManager] = $this->makeCompany('Acme ' . $role);
+            $project = $this->makeProject($company, 'Website');
+            $other = $this->makeProject($company, 'Mobile');
+            $staff = $this->makeStaff($company, [$project], ['name' => 'Ben Staff']);
+            $hidden = $this->makeIssue($other, $oldManager);
+
+            $this->actingAs($staff)->get('/reports/' . $hidden->uuid)->assertForbidden();
+
+            $this->actingAs($admin)->patch('/clients/' . $company->uuid, [
+                'name' => $company->name,
+                'status' => 'active',
+                'manager_id' => $staff->id,
+            ])->assertSessionHasNoErrors()
+                ->assertSessionHas('flash.message', 'Client company updated and manager changed successfully.');
+
+            $staff->refresh();
+            $this->assertSame(['manager', $company->id], [$staff->role, $staff->company_id]);
+            $this->assertSame($staff->id, $company->fresh()->manager_id);
+            // A manager is on every project, so the individual assignment is gone
+            $this->assertSame(0, $staff->projects()->count());
+
+            // Manager access to the whole company now
+            $this->actingAs($staff)->get('/reports/' . $hidden->uuid)->assertOk();
+            $this->actingAs($staff)->get('/clients/' . $company->uuid)->assertOk();
+
+            // By default the previous manager leaves the company
+            $this->assertSame(['manager', null], [$oldManager->fresh()->role, $oldManager->fresh()->company_id]);
+            $this->actingAs($oldManager->fresh())->get('/clients/' . $company->uuid)->assertForbidden();
+        }
+    }
+
+    public function test_the_previous_manager_can_stay_in_the_company_as_staff()
+    {
+        $admin = $this->makeAdmin();
+        [$company, $oldManager] = $this->makeCompany('Acme');
+        $project = $this->makeProject($company, 'Website');
+        $staff = $this->makeStaff($company, [$project]);
+        // Reported by someone else: people can always see issues they reported themselves
+        $issue = $this->makeIssue($project, $staff);
+
+        $this->actingAs($admin)->patch('/clients/' . $company->uuid, [
+            'name' => 'Acme',
+            'status' => 'active',
+            'manager_id' => $staff->id,
+            'previous_manager' => 'staff',
+        ])->assertSessionHasNoErrors();
+
+        $oldManager->refresh();
+        $this->assertSame(['staff', $company->id], [$oldManager->role, $oldManager->company_id]);
+
+        // As staff with no projects yet, they see none of the company's work or its management page
+        $this->actingAs($oldManager)->get('/reports/' . $issue->uuid)->assertForbidden();
+        $this->actingAs($oldManager)->get('/clients/' . $company->uuid)->assertForbidden();
+        $this->assertSame([], $this->actingAs($oldManager)->getJson('/api/reports')->json('data'));
+
+        // ...and they now appear among the staff the new manager can assign
+        $this->actingAs($staff->fresh())->get('/clients/' . $company->uuid)
+            ->assertInertia(fn (\Inertia\Testing\AssertableInertia $page) => $page
+                ->where('company.manager.id', $staff->id)
+                ->where('staff.0.id', $oldManager->id));
+    }
+
+    public function test_only_this_companys_active_staff_can_be_promoted()
+    {
+        $admin = $this->makeAdmin();
+        [$acme, $acmeManager] = $this->makeCompany('Acme');
+        [$borneo] = $this->makeCompany('Borneo');
+        $outsider = $this->makeStaff($borneo);
+        $deactivated = $this->makeStaff($acme, [], ['deactivated_at' => now()]);
+        $payload = ['name' => 'Acme', 'status' => 'active'];
+
+        // Staff of another company, a deactivated staff member, and an admin
+        foreach ([$outsider, $deactivated, $admin] as $person) {
+            $this->actingAs($admin)->patch('/clients/' . $acme->uuid, $payload + ['manager_id' => $person->id])
+                ->assertSessionHasErrors('manager_id');
+        }
+        $this->actingAs($admin)->patch('/clients/' . $acme->uuid, $payload + ['manager_id' => $acmeManager->id, 'previous_manager' => 'owner'])
+            ->assertSessionHasErrors('previous_manager');
+
+        $this->assertSame($acmeManager->id, $acme->fresh()->manager_id);
+        $this->assertSame(['staff', $borneo->id], [$outsider->fresh()->role, $outsider->fresh()->company_id]);
+        $this->assertSame('staff', $deactivated->fresh()->role);
+        $this->assertSame('admin', $admin->fresh()->role);
+    }
+
+    public function test_managers_and_staff_cannot_change_who_the_manager_is()
+    {
+        [$company, $manager] = $this->makeCompany('Acme');
+        $staff = $this->makeStaff($company);
+        $payload = ['name' => 'Acme', 'status' => 'active', 'manager_id' => $staff->id];
+
+        foreach ([$manager, $staff] as $user) {
+            $this->actingAs($user)->patch('/clients/' . $company->uuid, $payload)->assertForbidden();
+        }
+
+        $this->assertSame($manager->id, $company->fresh()->manager_id);
+        $this->assertSame('staff', $staff->fresh()->role);
+    }
+
     public function test_the_company_page_shows_its_manager_staff_projects_and_counts()
     {
         $admin = $this->makeAdmin();
