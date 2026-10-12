@@ -150,7 +150,7 @@ export default function Index({ logs, users, filters }: Props) {
                             placeholder="Search activity..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            className="h-9 bg-white pl-9"
+                            className="h-9 bg-card pl-9"
                         />
                         {search && (
                             <button
@@ -229,7 +229,7 @@ export default function Index({ logs, users, filters }: Props) {
                     )}
                 </div>
 
-                <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
+                <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-slate-50/50 text-xs font-medium tracking-wider text-muted-foreground uppercase [&>th]:text-muted-foreground">

@@ -1,84 +1,88 @@
+import { router } from '@inertiajs/react';
 import { useCallback, useEffect, useState } from 'react';
 
 export type Appearance = 'light' | 'dark' | 'system';
 
-const prefersDark = () => {
-    if (typeof window === 'undefined') {
-        return false;
-    }
+const APPEARANCES: Appearance[] = ['light', 'dark', 'system'];
+const CHANGE_EVENT = 'appearance-change';
 
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-};
+const isAppearance = (value: unknown): value is Appearance => APPEARANCES.includes(value as Appearance);
 
-const setCookie = (name: string, value: string, days = 365) => {
-    if (typeof document === 'undefined') {
-        return;
-    }
+const systemQuery = () => (typeof window === 'undefined' ? null : window.matchMedia('(prefers-color-scheme: dark)'));
 
-    const maxAge = days * 24 * 60 * 60;
-    document.cookie = `${name}=${value};path=/;max-age=${maxAge};SameSite=Lax`;
+/**
+ * Whether the given choice means dark colours right now.
+ * "system" follows the computer or browser setting.
+ */
+export const resolvesToDark = (appearance: Appearance, systemPrefersDark: boolean) =>
+    appearance === 'dark' || (appearance === 'system' && systemPrefersDark);
+
+/**
+ * The current choice. The server writes it on <html data-appearance> from the user's saved
+ * setting (or, when logged out, from this browser's cookie), so there is one source of truth.
+ */
+export const currentAppearance = (): Appearance => {
+    const value = typeof document === 'undefined' ? null : document.documentElement.dataset.appearance;
+
+    return isAppearance(value) ? value : 'system';
 };
 
 const applyTheme = (appearance: Appearance) => {
-    const isDark =
-        appearance === 'dark' || (appearance === 'system' && prefersDark());
+    const root = document.documentElement;
+    const isDark = resolvesToDark(appearance, systemQuery()?.matches ?? false);
 
-    document.documentElement.classList.toggle('dark', isDark);
-    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+    root.dataset.appearance = appearance;
+    root.classList.toggle('dark', isDark);
+    // Also switches the browser's own controls: scrollbars, date pickers, autofill
+    root.style.colorScheme = isDark ? 'dark' : 'light';
+
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: appearance }));
 };
 
-const mediaQuery = () => {
-    if (typeof window === 'undefined') {
-        return null;
-    }
-
-    return window.matchMedia('(prefers-color-scheme: dark)');
+const setCookie = (name: string, value: string, days = 365) => {
+    document.cookie = `${name}=${value};path=/;max-age=${days * 24 * 60 * 60};SameSite=Lax`;
 };
 
-const handleSystemThemeChange = () => {
-    const currentAppearance = localStorage.getItem('appearance') as Appearance;
-    applyTheme(currentAppearance || 'system');
-};
-
+/**
+ * Called once when the app starts.
+ */
 export function initializeTheme() {
-    const savedAppearance =
-        (localStorage.getItem('appearance') as Appearance) || 'system';
+    applyTheme(currentAppearance());
 
-    applyTheme(savedAppearance);
+    // While set to "system", follow the computer when it switches between light and dark
+    systemQuery()?.addEventListener('change', () => applyTheme(currentAppearance()));
 
-    // Add the event listener for system theme changes...
-    mediaQuery()?.addEventListener('change', handleSystemThemeChange);
+    // Every page the server sends says which theme this user has saved. Logging in happens
+    // without a full page load, so this is what brings a user's own theme in at that moment.
+    router.on('navigate', (event) => {
+        const saved = (event.detail.page.props as { appearance?: unknown }).appearance;
+
+        if (isAppearance(saved) && saved !== currentAppearance()) {
+            applyTheme(saved);
+        }
+    });
 }
 
 export function useAppearance() {
-    const [appearance, setAppearance] = useState<Appearance>('system');
+    const [appearance, setAppearance] = useState<Appearance>(currentAppearance);
 
-    const updateAppearance = useCallback((mode: Appearance) => {
-        setAppearance(mode);
+    // Stay in step when the theme is changed elsewhere on the page
+    useEffect(() => {
+        const sync = (event: Event) => setAppearance((event as CustomEvent<Appearance>).detail);
 
-        // Store in localStorage for client-side persistence...
-        localStorage.setItem('appearance', mode);
+        window.addEventListener(CHANGE_EVENT, sync);
 
-        // Store in cookie for SSR...
-        setCookie('appearance', mode);
-
-        applyTheme(mode);
+        return () => window.removeEventListener(CHANGE_EVENT, sync);
     }, []);
 
-    useEffect(() => {
-        const savedAppearance = localStorage.getItem(
-            'appearance',
-        ) as Appearance | null;
+    const updateAppearance = useCallback((mode: Appearance) => {
+        // Show it at once, and remember it in this browser so a refresh starts in the right colours
+        applyTheme(mode);
+        setCookie('appearance', mode);
 
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        updateAppearance(savedAppearance || 'system');
-
-        return () =>
-            mediaQuery()?.removeEventListener(
-                'change',
-                handleSystemThemeChange,
-            );
-    }, [updateAppearance]);
+        // Save it on the account, so it is there on the next login from any browser
+        router.patch('/settings/appearance', { appearance: mode }, { preserveScroll: true, preserveState: true });
+    }, []);
 
     return { appearance, updateAppearance } as const;
 }

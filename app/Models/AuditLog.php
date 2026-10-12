@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Impersonation;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Auth;
@@ -50,6 +51,12 @@ class AuditLog extends Model
         ?array $changes = null,
         ?User $actor = null
     ): self {
+        // What a Super Admin does while signed in as someone else is recorded under that
+        // user, as the app sees it, with a note saying who was really behind it
+        if ($actor === null && ($impersonator = Impersonation::impersonator())) {
+            $description .= " (by {$impersonator->name}, signed in as this user)";
+        }
+
         $actor ??= Auth::user();
 
         return static::create([

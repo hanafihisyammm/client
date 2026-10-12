@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
@@ -18,6 +19,9 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
  */
 class UserController extends Controller
 {
+    /** How many people can be invited, or re-invited, in one go. */
+    private const MAX_BULK_INVITES = 50;
+
     use AuthorizesRequests;
 
     /**
@@ -79,19 +83,7 @@ class UserController extends Controller
 
         try {
             // The account stays "Pending" (no verified date, unusable password) until the invitation is accepted
-            $newUser = User::create([
-                // Placeholder name from the email ("jane.tan@..." becomes "Jane Tan") until the user enters their own
-                'name' => Str::title(trim(preg_replace('/[._+\-]+/', ' ', Str::before($validated['email'], '@')))),
-                'email' => $validated['email'],
-                'password' => Hash::make(Str::random(40)),
-                'role' => $validated['role'],
-                // Only staff are placed in a company here; a manager is put in charge of one from the Clients page
-                'company_id' => $validated['role'] === 'staff' ? $validated['company_id'] : null,
-                'created_by' => auth()->id(),
-                'email_verified_at' => null,
-            ]);
-
-            app(NotificationService::class)->notifyUserInvited($newUser, $currentUser);
+            $newUser = $this->invite($validated['email'], $validated['role'], $validated['company_id'] ?? null, $currentUser);
 
             return redirect()->route('users.index')
                 ->with('flash', [
@@ -105,6 +97,148 @@ class UserController extends Controller
                 ->withInput()
                 ->withErrors(['general' => 'An error occurred while creating the user. Please try again.']);
         }
+    }
+
+    /**
+     * Invite several people at once, each with their own role and, for staff, their own company.
+     * Nothing is created unless every row is usable, so a typo never leaves the list half done.
+     * Addresses that are already registered are skipped and reported back, not treated as an error.
+     */
+    public function bulkStore(Request $request)
+    {
+        $this->authorize('create', User::class);
+
+        $validated = $request->validate([
+            'invites' => 'required|array|min:1|max:' . self::MAX_BULK_INVITES,
+            'invites.*.email' => 'required|string|email|max:255',
+            'invites.*.role' => 'required|string|in:admin,manager,staff',
+            'invites.*.company_id' => 'nullable|required_if:invites.*.role,staff|exists:companies,id',
+        ], [
+            'invites.required' => 'Please add at least one person.',
+            'invites.max' => 'You can invite up to ' . self::MAX_BULK_INVITES . ' people at a time.',
+            'invites.*.email.required' => 'Please enter an email address.',
+            'invites.*.email.email' => 'Please enter a valid email address.',
+            'invites.*.role.required' => 'Please select a role.',
+            'invites.*.role.in' => 'Please select a valid role.',
+            'invites.*.company_id.required_if' => 'Please choose the client company for this staff member.',
+        ]);
+
+        $currentUser = auth()->user();
+        $invites = collect($validated['invites'])->map(fn (array $invite) => [
+            'email' => Str::lower(trim($invite['email'])),
+            'role' => $invite['role'],
+            'company_id' => $invite['company_id'] ?? null,
+        ]);
+
+        // Row-by-row checks that validation rules cannot express
+        $errors = [];
+        $seen = [];
+        foreach ($invites as $index => $invite) {
+            if (isset($seen[$invite['email']])) {
+                $errors["invites.{$index}.email"] = 'This address is listed more than once.';
+            }
+            $seen[$invite['email']] = true;
+
+            if (!$currentUser->can('createRole', [User::class, $invite['role']])) {
+                $errors["invites.{$index}.role"] = 'You are not authorized to create users with this role.';
+            }
+        }
+
+        if ($errors) {
+            return back()->withInput()->withErrors($errors);
+        }
+
+        $alreadyRegistered = User::whereIn(DB::raw('lower(email)'), $invites->pluck('email')->all())
+            ->pluck('email')
+            ->map(fn ($email) => Str::lower($email));
+        $toInvite = $invites->reject(fn (array $invite) => $alreadyRegistered->contains($invite['email']))->values();
+
+        if ($toInvite->isEmpty()) {
+            return back()->withInput()->withErrors([
+                'invites' => $invites->count() === 1 ? 'This email address is already registered.' : 'All of these email addresses are already registered.',
+            ]);
+        }
+
+        DB::transaction(function () use ($toInvite, $currentUser) {
+            foreach ($toInvite as $invite) {
+                $this->invite($invite['email'], $invite['role'], $invite['company_id'], $currentUser);
+            }
+        });
+
+        $message = $toInvite->count() === 1
+            ? "Invitation sent to {$toInvite->first()['email']}."
+            : "{$toInvite->count()} invitations sent.";
+
+        if ($alreadyRegistered->isNotEmpty()) {
+            $message .= " Skipped {$alreadyRegistered->count()} already registered: " . $alreadyRegistered->implode(', ') . '.';
+        }
+
+        return redirect()->route('users.index')->with('flash', ['message' => $message, 'type' => 'success']);
+    }
+
+    /**
+     * Send the invitation email again to several users who have not set up their accounts yet.
+     * Anyone who has already set up, is deactivated, or may not be managed by this admin is skipped.
+     */
+    public function bulkResendInvitations(Request $request)
+    {
+        $this->authorize('viewAny', User::class);
+
+        $validated = $request->validate([
+            'user_ids' => 'required|array|min:1|max:' . self::MAX_BULK_INVITES,
+            'user_ids.*' => 'integer',
+        ], [
+            'user_ids.required' => 'Select at least one user.',
+            'user_ids.max' => 'You can resend up to ' . self::MAX_BULK_INVITES . ' invitations at a time.',
+        ]);
+
+        $actor = auth()->user();
+        $selected = User::whereIn('id', $validated['user_ids'])->get();
+
+        $pending = $selected->filter(
+            fn (User $user) => $user->email_verified_at === null && $user->isActive() && $actor->can('update', $user)
+        );
+
+        if ($pending->isEmpty()) {
+            return back()->withErrors(['invitation' => 'None of the selected users are waiting to set up their account.']);
+        }
+
+        foreach ($pending as $user) {
+            app(NotificationService::class)->notifyUserInvited($user, $actor);
+        }
+
+        $message = $pending->count() === 1
+            ? "Invitation sent to {$pending->first()->email}."
+            : "{$pending->count()} invitations resent.";
+
+        $skipped = count(array_unique($validated['user_ids'])) - $pending->count();
+        if ($skipped > 0) {
+            $message .= " Skipped {$skipped} that " . ($skipped === 1 ? 'is' : 'are') . ' not waiting for an invitation.';
+        }
+
+        return back()->with('flash', ['message' => $message, 'type' => 'success']);
+    }
+
+    /**
+     * Create a pending account and email its invitation.
+     */
+    private function invite(string $email, string $role, $companyId, User $invitedBy): User
+    {
+        $newUser = User::create([
+            // Placeholder name from the email ("jane.tan@..." becomes "Jane Tan") until the user enters their own
+            'name' => Str::title(trim(preg_replace('/[._+\-]+/', ' ', Str::before($email, '@')))),
+            'email' => $email,
+            'password' => Hash::make(Str::random(40)),
+            'role' => $role,
+            // Only staff are placed in a company here; a manager is put in charge of one from the Clients page
+            'company_id' => $role === 'staff' ? $companyId : null,
+            'created_by' => $invitedBy->id,
+            'email_verified_at' => null,
+        ]);
+
+        app(NotificationService::class)->notifyUserInvited($newUser, $invitedBy);
+
+        return $newUser;
     }
 
     /**

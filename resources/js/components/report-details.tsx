@@ -486,7 +486,7 @@ export default function ReportDetails({ report, onUpdate, userRole, userId }: Re
               {report.comments && report.comments.length > 0 && (
                 <div className="space-y-3 max-h-60 overflow-y-auto bg-gray-50 p-4 rounded-lg">
                   {report.comments.map((comment) => (
-                    <div key={comment.id} className="bg-white p-3 rounded-lg shadow-sm border">
+                    <div key={comment.id} className="bg-card p-3 rounded-lg shadow-sm border">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="font-medium text-sm">{comment.user.name}</span>
                         <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">

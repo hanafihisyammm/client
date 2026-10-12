@@ -1,34 +1,35 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-appearance="{{ $appearance ?? 'system' }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <meta name="app-timezone" content="{{ config('app.business_timezone') }}">
+        <meta name="color-scheme" content="light dark">
 
-        {{-- Inline script to detect system dark mode preference and apply it immediately --}}
+        {{-- The theme is decided before anything is drawn, so the page never flashes the wrong
+             colours. "dark" is already on <html> from the server; "system" needs the browser. --}}
         <script>
             (function() {
-                const appearance = '{{ $appearance ?? "system" }}';
+                var root = document.documentElement;
 
-                if (appearance === 'system') {
-                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-                    if (prefersDark) {
-                        document.documentElement.classList.add('dark');
-                    }
+                if (root.dataset.appearance === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    root.classList.add('dark');
                 }
             })();
         </script>
 
-        {{-- Inline style to set the HTML background color based on our theme in app.css --}}
+        {{-- The page background and the browser's own controls (scrollbars, date pickers,
+             autofill) before the stylesheet has loaded. Same colours as app.css. --}}
         <style>
             html {
                 background-color: #f7f7f4;
+                color-scheme: light;
             }
 
             html.dark {
                 background-color: #0e1116;
+                color-scheme: dark;
             }
         </style>
 

@@ -15,10 +15,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
     
     // User Management (Super Admin & Admin only)
+    Route::post('/users/bulk', [App\Http\Controllers\UserController::class, 'bulkStore'])->name('users.bulk.store');
+    Route::post('/users/invitations', [App\Http\Controllers\UserController::class, 'bulkResendInvitations'])->name('users.invitations.resend');
     Route::resource('users', App\Http\Controllers\UserController::class);
     Route::post('/users/{user}/invitation', [App\Http\Controllers\UserController::class, 'resendInvitation'])->name('users.invitation.resend');
     Route::post('/users/{user}/deactivate', [App\Http\Controllers\UserController::class, 'deactivate'])->name('users.deactivate');
     Route::post('/users/{user}/reactivate', [App\Http\Controllers\UserController::class, 'reactivate'])->name('users.reactivate');
+
+    // "Sign in as" (Super Admin only). Stopping is open to whoever the session currently is,
+    // because by then that is the user being signed in as; the session itself proves who started it.
+    Route::post('/users/{user}/impersonate', [App\Http\Controllers\ImpersonationController::class, 'start'])->name('impersonation.start');
+    Route::post('/impersonation/stop', [App\Http\Controllers\ImpersonationController::class, 'stop'])->name('impersonation.stop');
 
     // Client companies: admins manage all of them, a manager can open only their own
     Route::get('/my-company', [App\Http\Controllers\CompanyController::class, 'mine'])->name('clients.mine');

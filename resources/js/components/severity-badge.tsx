@@ -13,17 +13,17 @@ const severityConfig = {
   },
   major: {
     label: 'Major',
-    className: 'bg-orange-500 text-white hover:bg-orange-600',
+    className: 'bg-orange-500 text-black hover:bg-orange-400',
     description: 'Feature broken, no workaround'
   },
   minor: {
     label: 'Minor',
-    className: 'bg-yellow-500 text-white hover:bg-yellow-600',
+    className: 'bg-yellow-500 text-black hover:bg-yellow-400',
     description: 'Feature broken, has workaround'
   },
   trivial: {
     label: 'Trivial',
-    className: 'bg-gray-400 text-white hover:bg-gray-500',
+    className: 'bg-gray-500 text-white hover:bg-gray-400',
     description: 'Cosmetic issue'
   }
 }

@@ -30,7 +30,7 @@ interface Project {
     updated_at: string;
     creator: User;
     users: User[];
-    company?: { id: number; uuid: string; name: string } | null;
+    company?: { id: number; uuid: string; name: string; manager?: { id: number; deactivated_at?: string | null } | null } | null;
     reports_count: number;
     open_reports_count?: number;
     in_progress_reports_count?: number;
@@ -101,7 +101,7 @@ function StatusBadge({ status }: { status: string }) {
 // Report status mini badge
 function ReportStatusBadge({ count, type }: { count: number; type: 'open' | 'in_progress' | 'resolved' | 'closed' | 'reopened' }) {
     if (count === 0) {
-        return <span className="text-gray-300">—</span>;
+        return <span className="text-gray-400">—</span>;
     }
 
     const config = {
@@ -123,6 +123,14 @@ function ReportStatusBadge({ count, type }: { count: number; type: 'open' | 'in_
 }
 
 // Stats card
+/** Assigned staff plus the company's manager, who is on every project of the company. */
+function teamSize(project: Project): number {
+    const manager = project.company?.manager;
+    const managerCounts = !!manager && !manager.deactivated_at && !project.users.some(user => user.id === manager.id);
+
+    return project.users.length + (managerCounts ? 1 : 0);
+}
+
 export default function ProjectIndex({ projects, canManage, showCompany }: Props) {
     const [deleteProject, setDeleteProject] = useState<Project | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -264,7 +272,7 @@ export default function ProjectIndex({ projects, canManage, showCompany }: Props
                             placeholder="Search projects..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 h-9 bg-white"
+                            className="pl-9 h-9 bg-card"
                         />
                         {searchQuery && (
                             <button
@@ -328,7 +336,7 @@ export default function ProjectIndex({ projects, canManage, showCompany }: Props
                 )}
 
                 {/* Table */}
-                <div className="bg-white shadow-sm border rounded-xl overflow-hidden">
+                <div className="bg-card shadow-sm border rounded-xl overflow-hidden">
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-slate-50/50">
@@ -358,7 +366,7 @@ export default function ProjectIndex({ projects, canManage, showCompany }: Props
                                     </Button>
                                 </TableHead>
                                 <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground text-center">
-                                    Staff
+                                    Team
                                 </TableHead>
                                 <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground text-center" colSpan={5}>
                                     Issue Status
@@ -496,9 +504,9 @@ export default function ProjectIndex({ projects, canManage, showCompany }: Props
                                             <StatusBadge status={project.status || 'active'} />
                                         </TableCell>
                                         <TableCell>
-                                            <div className="flex items-center justify-center gap-1.5">
+                                            <div className="flex items-center justify-center gap-1.5" title="Assigned staff plus the company's manager">
                                                 <Users className="w-4 h-4 text-muted-foreground" />
-                                                <span className="font-medium">{project.users.length}</span>
+                                                <span className="font-medium">{teamSize(project)}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-center">

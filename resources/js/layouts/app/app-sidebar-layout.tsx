@@ -3,6 +3,7 @@ import { AppShell } from '@/components/app-shell';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppSidebarHeader } from '@/components/app-sidebar-header';
 import { FlashMessages } from '@/components/flash-messages';
+import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { type BreadcrumbItem } from '@/types';
 import { type PropsWithChildren } from 'react';
 
@@ -15,6 +16,7 @@ export default function AppSidebarLayout({
             <FlashMessages />
             <AppSidebar />
             <AppContent variant="sidebar" className="overflow-x-hidden">
+                <ImpersonationBanner />
                 <AppSidebarHeader breadcrumbs={breadcrumbs} />
                 <div className="px-6 pt-4 pb-6">
                     {children}

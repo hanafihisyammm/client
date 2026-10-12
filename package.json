@@ -9,6 +9,8 @@
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
         "lint": "eslint . --fix",
+        "test:theme": "node --test tests/browser/hardcoded-colours.test.mjs tests/browser/theme-switching.test.mjs",
+        "test:theme:audit": "node tests/browser/theme-audit.mjs",
         "types": "tsc --noEmit"
     },
     "devDependencies": {

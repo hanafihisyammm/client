@@ -22,7 +22,7 @@ export function resolveUrl(url: NonNullable<InertiaLinkProps['href']>): string {
  * compact, white, and highlighted while a filter is applied.
  */
 export function filterControlClass(active: boolean): string {
-    return `h-9 whitespace-nowrap text-sm ${active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`;
+    return `h-9 whitespace-nowrap text-sm ${active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-card'}`;
 }
 
 /**
@@ -56,4 +56,15 @@ export function isIssueOverdue(dueDate: string | null | undefined, status: strin
     }
 
     return dueDate.slice(0, 10) < todayInAppTimezone();
+}
+
+/**
+ * Colours for a label chip. Labels have a colour chosen by a person, which may be too dark to
+ * read on a dark background, so in the dark theme the text is lightened towards white.
+ */
+export function labelStyle(color: string): { backgroundColor: string; color: string } {
+    return {
+        backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)`,
+        color: `light-dark(color-mix(in srgb, ${color} 80%, black), color-mix(in srgb, ${color} 55%, white))`,
+    };
 }

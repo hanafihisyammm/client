@@ -8,16 +8,27 @@ use App\Models\ReportAttachment;
 use App\Models\ReportComment;
 use App\Models\ReportActivityLog;
 use App\Services\NotificationService;
+use App\Support\Images\AttachmentImageProcessor;
+use App\Support\Images\InvalidImageException;
+use App\Support\Images\ProcessedImage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ReportController extends Controller
 {
+    /**
+     * What may be attached to an issue: images and PDFs, up to 5 MB each. The type is judged
+     * from the file's content, not its name. Images are then checked again when they are decoded.
+     */
+    private const ATTACHMENT_RULES = 'file|mimes:jpeg,jpg,png,gif,webp,pdf|max:5120';
+
     public function index(Request $request): JsonResponse
     {
         $user = Auth::user();
@@ -80,7 +91,7 @@ class ReportController extends Controller
             'label_ids' => 'nullable|array',
             'label_ids.*' => 'exists:labels,id',
             'attachments' => 'nullable|array|max:5',
-            'attachments.*' => 'file|mimes:jpeg,jpg,png,gif,pdf|max:5120',
+            'attachments.*' => self::ATTACHMENT_RULES,
         ]);
 
         $user = Auth::user();
@@ -106,6 +117,11 @@ class ReportController extends Controller
 
         $type = $validated['type'] ?? Report::TYPE_BUG;
 
+        // Images are checked and converted before anything is saved, so a bad file
+        // stops the request with a clear message instead of leaving a half-made issue
+        $attachments = $this->prepareAttachments($request->file('attachments') ?? []);
+        $storedPaths = [];
+
         DB::beginTransaction();
         try {
             $report = Report::create([
@@ -128,21 +144,7 @@ class ReportController extends Controller
                 $report->labels()->attach($validated['label_ids']);
             }
 
-            if ($request->hasFile('attachments')) {
-                foreach ($request->file('attachments') as $file) {
-                    $filename = Str::random(40) . '.' . $file->getClientOriginalExtension();
-                    $storagePath = $file->storeAs('reports/' . $report->id, $filename, 'public');
-
-                    ReportAttachment::create([
-                        'report_id' => $report->id,
-                        'filename' => $filename,
-                        'original_filename' => $file->getClientOriginalName(),
-                        'mime_type' => $file->getMimeType(),
-                        'file_size' => $file->getSize(),
-                        'storage_path' => $storagePath,
-                    ]);
-                }
-            }
+            $this->saveAttachments($report, $attachments, $storedPaths);
 
             DB::commit();
 
@@ -157,6 +159,9 @@ class ReportController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            // The issue was not created, so its files must not be left behind either
+            Storage::disk('public')->delete($storedPaths);
+
             return response()->json(['message' => 'Failed to create report'], 500);
         }
     }
@@ -568,30 +573,17 @@ class ReportController extends Controller
             case 'add_attachments':
                 $request->validate([
                     'attachments' => 'required|array|min:1|max:5',
-                    'attachments.*' => 'file|mimes:jpeg,jpg,png,gif,pdf,webp|max:5120',
+                    'attachments.*' => self::ATTACHMENT_RULES,
                 ]);
 
-                if ($request->hasFile('attachments')) {
-                    foreach ($request->file('attachments') as $file) {
-                        $filename = Str::random(40) . '.' . $file->getClientOriginalExtension();
-                        $storagePath = $file->storeAs('reports/' . $report->id, $filename, 'public');
+                $storedPaths = [];
+                $this->saveAttachments($report, $this->prepareAttachments($request->file('attachments') ?? []), $storedPaths);
 
-                        ReportAttachment::create([
-                            'report_id' => $report->id,
-                            'filename' => $filename,
-                            'original_filename' => $file->getClientOriginalName(),
-                            'mime_type' => $file->getMimeType(),
-                            'file_size' => $file->getSize(),
-                            'storage_path' => $storagePath,
-                        ]);
-                    }
-
-                    ReportActivityLog::create([
-                        'report_id' => $report->id,
-                        'user_id' => $user->id,
-                        'action' => 'added_attachments',
-                    ]);
-                }
+                ReportActivityLog::create([
+                    'report_id' => $report->id,
+                    'user_id' => $user->id,
+                    'action' => 'added_attachments',
+                ]);
 
                 $message = 'Attachments uploaded successfully.';
                 break;
@@ -621,6 +613,82 @@ class ReportController extends Controller
             // What this user may do now that the status has changed
             'abilities' => $freshReport->abilitiesFor($user),
         ]);
+    }
+
+    /**
+     * Check every uploaded file and get it ready to store. Images are validated by their real
+     * content, scaled down if very large and converted to WebP; PDFs are left exactly as they are.
+     * Nothing is written yet.
+     *
+     * @param  array<int, UploadedFile>  $files
+     * @return array<int, array{file: UploadedFile, image: ?ProcessedImage}>
+     *
+     * @throws ValidationException naming the file that cannot be used
+     */
+    private function prepareAttachments(array $files): array
+    {
+        $processor = app(AttachmentImageProcessor::class);
+        $prepared = [];
+
+        foreach ($files as $file) {
+            try {
+                $prepared[] = ['file' => $file, 'image' => $processor->handles($file) ? $processor->process($file) : null];
+            } catch (InvalidImageException $exception) {
+                throw ValidationException::withMessages([
+                    'attachments' => ['"' . $file->getClientOriginalName() . '" ' . $exception->getMessage()],
+                ]);
+            }
+        }
+
+        return $prepared;
+    }
+
+    /**
+     * Store prepared attachments on the public disk and record them against the report.
+     *
+     * @param  array<int, array{file: UploadedFile, image: ?ProcessedImage}>  $attachments
+     * @param  array<int, string>  $storedPaths  Filled with every path written, for cleaning up after a failure
+     */
+    private function saveAttachments(Report $report, array $attachments, array &$storedPaths): void
+    {
+        $disk = Storage::disk('public');
+        $directory = 'reports/' . $report->id;
+
+        foreach ($attachments as ['file' => $file, 'image' => $image]) {
+            $originalName = $file->getClientOriginalName();
+
+            if ($image) {
+                $filename = Str::random(40) . '.' . $image->extension;
+                $storagePath = $directory . '/' . $filename;
+                $stored = $disk->put($storagePath, $image->contents);
+
+                // "screenshot.png" is now a WebP file, so its name says so too
+                if ($image->converted) {
+                    $originalName = pathinfo($originalName, PATHINFO_FILENAME) . '.' . $image->extension;
+                }
+            } else {
+                $filename = Str::random(40) . '.' . $file->getClientOriginalExtension();
+                $storagePath = $file->storeAs($directory, $filename, 'public');
+                $stored = $storagePath !== false;
+            }
+
+            if (!$stored) {
+                $disk->delete($storedPaths);
+
+                throw new \RuntimeException('Could not store the attachment "' . $file->getClientOriginalName() . '".');
+            }
+
+            $storedPaths[] = $storagePath;
+
+            ReportAttachment::create([
+                'report_id' => $report->id,
+                'filename' => $filename,
+                'original_filename' => $originalName,
+                'mime_type' => $image ? $image->mimeType : $file->getMimeType(),
+                'file_size' => $image ? $image->size() : $file->getSize(),
+                'storage_path' => $storagePath,
+            ]);
+        }
     }
 
     public function destroy(Report $report): JsonResponse

@@ -62,6 +62,21 @@ class UserPolicy
     }
 
     /**
+     * Determine whether the user can sign in as the model ("Sign in as").
+     * Super Admins only, and never as themselves, another Super Admin,
+     * a deactivated user, or someone who has not finished setting up their account.
+     */
+    public function impersonate(User $user, User $model): bool
+    {
+        return $user->role === 'super_admin'
+            && $user->isActive()
+            && $model->id !== $user->id
+            && $model->role !== 'super_admin'
+            && $model->isActive()
+            && $model->email_verified_at !== null;
+    }
+
+    /**
      * Determine whether the user can deactivate or reactivate the model.
      */
     public function deactivate(User $user, User $model): bool

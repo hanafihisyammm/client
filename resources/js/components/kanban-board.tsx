@@ -1,7 +1,7 @@
 import { router } from '@inertiajs/react';
 import { columnDragClass, useIssueDrag, type IssueStatus } from '@/hooks/use-issue-drag';
 import { Badge } from '@/components/ui/badge';
-import { isIssueOverdue } from '@/lib/utils';
+import { isIssueOverdue, labelStyle } from '@/lib/utils';
 import { IssueTypeBadge } from '@/components/issue-type-badge';
 import { User as UserIcon, Clock, ArrowUpRight, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 
@@ -86,10 +86,11 @@ const priorityConfig = {
 };
 
 const severityColors = {
+    // Solid fills, the same in both themes. Black on orange and yellow, as white is too faint there.
     critical: 'bg-red-600 text-white',
-    major: 'bg-orange-500 text-white',
-    minor: 'bg-yellow-500 text-white',
-    trivial: 'bg-gray-400 text-white',
+    major: 'bg-orange-500 text-black',
+    minor: 'bg-yellow-500 text-black',
+    trivial: 'bg-gray-500 text-white',
 };
 
 function IssueCard({ report, dragProps = {}, moving = false }: { report: Report; dragProps?: object; moving?: boolean }) {
@@ -102,7 +103,7 @@ function IssueCard({ report, dragProps = {}, moving = false }: { report: Report;
     return (
         <div
             {...dragProps}
-            className={`bg-white rounded-lg border border-gray-200 p-3 mb-2 shadow-sm hover:shadow-md transition-shadow cursor-pointer group ${moving ? 'opacity-50' : ''}`}
+            className={`bg-card rounded-lg border border-gray-200 p-3 mb-2 shadow-sm hover:shadow-md transition-shadow cursor-pointer group ${moving ? 'opacity-50' : ''}`}
             onClick={() => router.get(`/reports/${report.uuid}`)}
         >
             {/* Issue Key & Priority */}
@@ -136,7 +137,7 @@ function IssueCard({ report, dragProps = {}, moving = false }: { report: Report;
                         <span
                             key={label.id}
                             className="text-[10px] px-1.5 py-0.5 rounded-full"
-                            style={{ backgroundColor: label.color + '20', color: label.color }}
+                            style={labelStyle(label.color)}
                         >
                             {label.name}
                         </span>

@@ -107,7 +107,7 @@ export default function ProjectEdit({ project, clients }: Props) {
             <Head title={`Edit Project: ${project.name}`} />
             
             <div className="max-w-4xl mx-auto sm:px-6 lg:px-8">
-                <div className="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div className="bg-card overflow-hidden shadow-sm sm:rounded-lg">
                     <div className="p-6">
                         <div className="flex items-center gap-4 mb-6">
                             <Link href={`/projects/view/${project.uuid}`}>

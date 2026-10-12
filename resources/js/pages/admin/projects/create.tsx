@@ -28,7 +28,7 @@ interface Props {
 }
 
 const statusOptions = [
-    { value: 'active', label: 'Active', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
+    { value: 'active', label: 'Active', icon: CheckCircle2, color: 'text-green-700', bg: 'bg-green-50' },
     { value: 'inactive', label: 'Inactive', icon: Clock, color: 'text-gray-600', bg: 'bg-gray-50' },
     { value: 'completed', label: 'Completed', icon: Archive, color: 'text-blue-600', bg: 'bg-blue-50' },
 ];
@@ -121,7 +121,7 @@ export default function ProjectCreate({ clients: allStaff, companies, fixedCompa
                         {/* Left Column */}
                         <div className="lg:col-span-2 space-y-6">
                             {/* Project Details */}
-                            <div className="bg-white border rounded-xl p-6 space-y-5">
+                            <div className="bg-card border rounded-xl p-6 space-y-5">
                                 <div className="flex items-center gap-3 pb-4 border-b">
                                     <div className="p-2 bg-indigo-50 rounded-lg">
                                         <FolderKanban className="w-5 h-5 text-indigo-600" />
@@ -133,7 +133,7 @@ export default function ProjectCreate({ clients: allStaff, companies, fixedCompa
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="name">Project Name <span className="text-red-500">*</span></Label>
+                                    <Label htmlFor="name">Project Name <span className="text-red-600">*</span></Label>
                                     <Input
                                         id="name"
                                         value={data.name}
@@ -192,9 +192,9 @@ export default function ProjectCreate({ clients: allStaff, companies, fixedCompa
 
                             {/* Client company */}
                             {!fixedCompanyId && (
-                                <div className="bg-white border rounded-xl p-6 space-y-3">
+                                <div className="bg-card border rounded-xl p-6 space-y-3">
                                     <Label htmlFor="company_id" className="text-sm font-medium text-gray-700">
-                                        Client company <span className="text-red-500">*</span>
+                                        Client company <span className="text-red-600">*</span>
                                     </Label>
                                     <Select
                                         value={data.company_id}
@@ -222,7 +222,7 @@ export default function ProjectCreate({ clients: allStaff, companies, fixedCompa
                             )}
 
                             {/* Team Members */}
-                            <div className="bg-white border rounded-xl p-6 space-y-5">
+                            <div className="bg-card border rounded-xl p-6 space-y-5">
                                 <div className="flex items-center justify-between pb-4 border-b">
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 bg-amber-50 rounded-lg">
@@ -305,7 +305,7 @@ export default function ProjectCreate({ clients: allStaff, companies, fixedCompa
                         {/* Right Column */}
                         <div className="space-y-6">
                             {/* Preview */}
-                            <div className="bg-white border rounded-xl p-6">
+                            <div className="bg-card border rounded-xl p-6">
                                 <h3 className="font-medium text-gray-900 mb-4">Preview</h3>
                                 <div className="p-4 bg-gray-50 rounded-lg border space-y-3">
                                     <div className="flex items-start gap-3">

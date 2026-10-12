@@ -543,4 +543,19 @@ class ManagerAndStaffPermissionsTest extends TestCase
         $this->act($this->staff, $issue->fresh(), ['priority' => 'low'] + $payload)->assertForbidden();
         $this->assertSame('urgent', $issue->fresh()->priority);
     }
+
+    public function test_the_project_pages_are_given_the_company_manager_as_part_of_the_team()
+    {
+        $this->actingAs($this->manager)->get('/projects')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('projects.0.company.manager.id', $this->manager->id)
+                ->has('projects.0.users', 1));
+
+        $this->actingAs($this->staff)->get('/projects/view/' . $this->website->uuid)
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('project.company.manager.name', $this->manager->name)
+                ->where('project.company.manager.role', 'manager')
+                ->missing('project.company.manager.password')
+                ->has('project.users', 1));
+    }
 }

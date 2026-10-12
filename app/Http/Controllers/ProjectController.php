@@ -26,7 +26,8 @@ class ProjectController extends Controller
 
         // Admins see every project, a manager their company's, staff the ones they are assigned to
         $projects = Project::visibleTo($user)
-            ->with(['creator', 'users', 'company:id,uuid,name'])
+            // The company's manager is on the team of every project in the company
+            ->with(['creator', 'users', 'company:id,uuid,name,manager_id', 'company.manager:id,name,email,role,deactivated_at'])
             ->withCount([
                 'reports',
                 'reports as open_reports_count' => function ($query) {
@@ -204,7 +205,7 @@ class ProjectController extends Controller
             abort(403, 'Unauthorized');
         }
 
-        $project->load(['creator', 'users', 'company:id,uuid,name', 'reports.reporter', 'reports.attachments']);
+        $project->load(['creator', 'users', 'company:id,uuid,name,manager_id', 'company.manager:id,name,email,role,deactivated_at', 'reports.reporter', 'reports.attachments']);
 
         return Inertia::render('admin/projects/show', [
             'project' => $project,

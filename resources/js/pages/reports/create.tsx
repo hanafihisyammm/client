@@ -245,7 +245,7 @@ export default function CreateReport() {
           <div className="lg:col-span-2 space-y-6">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Issue Type Selector */}
-              <div className="bg-white border rounded-xl p-6">
+              <div className="bg-card border rounded-xl p-6">
                 <Label className="text-sm font-medium text-gray-700 mb-3 block">Issue Type</Label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -254,7 +254,7 @@ export default function CreateReport() {
                     className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
                       issueType === 'bug'
                         ? 'border-red-500 bg-red-50'
-                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                        : 'border-gray-200 hover:border-gray-300 bg-card'
                     }`}
                   >
                     <div className={`p-2 rounded-lg ${issueType === 'bug' ? 'bg-red-100' : 'bg-gray-100'}`}>
@@ -271,7 +271,7 @@ export default function CreateReport() {
                     className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
                       issueType === 'feature'
                         ? 'border-purple-500 bg-purple-50'
-                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                        : 'border-gray-200 hover:border-gray-300 bg-card'
                     }`}
                   >
                     <div className={`p-2 rounded-lg ${issueType === 'feature' ? 'bg-purple-100' : 'bg-gray-100'}`}>
@@ -286,14 +286,14 @@ export default function CreateReport() {
               </div>
 
               {/* Project & Title */}
-              <div className="bg-white border rounded-xl p-6 space-y-4">
+              <div className="bg-card border rounded-xl p-6 space-y-4">
                 {!hasActiveProject && (
                   <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                     <p className="font-medium">There are no active projects</p>
                     <p className="mt-1">
                       An issue has to belong to an active project. Set a project's status to Active, or create a new project, then come back here.
                     </p>
-                    <Button type="button" variant="outline" size="sm" className="mt-3 bg-white" onClick={() => router.get('/projects')}>
+                    <Button type="button" variant="outline" size="sm" className="mt-3 bg-card" onClick={() => router.get('/projects')}>
                       Go to Projects
                     </Button>
                   </div>
@@ -301,7 +301,7 @@ export default function CreateReport() {
                 {projects && projects.length > 0 && (
                   <div className="space-y-2">
                     <Label htmlFor="project" className="text-sm font-medium text-gray-700">
-                      Project <span className="text-red-500">*</span>
+                      Project <span className="text-red-600">*</span>
                     </Label>
                     <SearchableSelect
                       value={projectId}
@@ -315,7 +315,7 @@ export default function CreateReport() {
                         hint: project.status !== 'active' ? `${project.status}, cannot take new issues` : undefined,
                         disabled: project.status !== 'active',
                       }))}
-                      className="h-11 w-full bg-white"
+                      className="h-11 w-full bg-card"
                       contentClassName="w-(--radix-popover-trigger-width)"
                     />
                     {errors.project_id && (
@@ -326,7 +326,7 @@ export default function CreateReport() {
 
                 <div className="space-y-2">
                   <Label htmlFor="title" className="text-sm font-medium text-gray-700">
-                    Summary <span className="text-red-500">*</span>
+                    Summary <span className="text-red-600">*</span>
                   </Label>
                   <Input
                     id="title"
@@ -343,10 +343,10 @@ export default function CreateReport() {
               </div>
 
               {/* Description */}
-              <div className="bg-white border rounded-xl p-6 space-y-4">
+              <div className="bg-card border rounded-xl p-6 space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="description" className="text-sm font-medium text-gray-700">
-                    Description <span className="text-red-500">*</span>
+                    Description <span className="text-red-600">*</span>
                   </Label>
                   <Textarea
                     id="description"
@@ -366,7 +366,7 @@ export default function CreateReport() {
               </div>
 
               {/* Attachments */}
-              <div className="bg-white border rounded-xl p-6 space-y-4">
+              <div className="bg-card border rounded-xl p-6 space-y-4">
                 <Label className="text-sm font-medium text-gray-700">Attachments</Label>
                 <div
                   onDragOver={handleDragOver}
@@ -382,7 +382,7 @@ export default function CreateReport() {
                     type="file"
                     id="attachments"
                     multiple
-                    accept="image/*,.pdf"
+                    accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
                     onChange={handleFileChange}
                     className="hidden"
                   />
@@ -437,7 +437,7 @@ export default function CreateReport() {
           {/* Right Column - Details */}
           <div className="space-y-6">
             {/* Priority & Severity */}
-            <div className="bg-white border rounded-xl p-6 space-y-5">
+            <div className="bg-card border rounded-xl p-6 space-y-5">
               <h3 className="font-medium text-gray-900">Details</h3>
 
               {/* Priority */}
@@ -504,7 +504,7 @@ export default function CreateReport() {
 
             {/* Preview Card */}
             {(title || selectedProject) && (
-              <div className="bg-white border rounded-xl p-6 space-y-4">
+              <div className="bg-card border rounded-xl p-6 space-y-4">
                 <h3 className="font-medium text-gray-900">Preview</h3>
                 <div className="p-4 bg-gray-50 rounded-lg border space-y-2">
                   {selectedProject && (

@@ -130,7 +130,7 @@ export default function CreateReportForm({ onSuccess }: CreateReportFormProps) {
               type="file"
               id="attachments"
               multiple
-              accept="image/*,.pdf"
+              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
               onChange={handleFileChange}
               className="hidden"
             />

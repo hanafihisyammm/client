@@ -1,0 +1,310 @@
+/*
+ * Theme-aware versions of Tailwind's colour palette.
+ *
+ * Pages across the app use palette classes such as text-gray-900, bg-gray-50, bg-red-50 or
+ * border-blue-200. On their own those are light-theme colours: dark text, pale backgrounds.
+ * Rather than adding a dark: twin next to every one of them on every page, the palette itself
+ * is given a dark value here, once, separately for the three ways a colour is used:
+ *
+ *   --text-color-*        what text-* classes use
+ *   --background-color-*  what bg-* classes use
+ *   --border-color-*      what border-* classes use
+ *
+ * Tailwind looks these up before the plain --color-* palette, so text-red-700 can become a
+ * light red in the dark theme while bg-red-600 (a solid button with white text on it) and
+ * gradients stay exactly as they are. Every variant follows along: hover:, focus:, /50 ...
+ *
+ * light-dark(a, b) is plain CSS: it picks a in the light theme and b in the dark theme,
+ * going by the color-scheme set on <html> in app.css.
+ *
+ * The rules, for every hue:
+ *   text   600-950  ->  the mirror-image light shade (700 becomes 300, and so on)
+ *   bg     50-300   ->  the hue mixed into the dark card colour (a tint, as in the light theme)
+ *   border 100-300  ->  a stronger mix of the same, so outlines stay visible
+ *   400 and 500 are left alone: they are bright enough for both themes.
+ *
+ * Greys are set by hand, so that secondary text keeps a readable contrast on the card colour
+ * of each theme. text-gray-400 is also slightly darker than Tailwind's own in the light theme
+ * for that reason (about 5:1 on white instead of 2.6:1), and text-gray-500 a touch darker to match.
+ *
+ * Use the semantic classes (bg-card, text-foreground, text-muted-foreground, border-border)
+ * for new neutral surfaces. This file exists so that palette colours are safe as well.
+ */
+
+@theme {
+    /* gray: neutral text, surfaces and outlines */
+    --text-color-gray-950: light-dark(var(--color-gray-950), #ffffff);
+    --text-color-gray-900: light-dark(var(--color-gray-900), #f3f4f2);
+    --text-color-gray-800: light-dark(var(--color-gray-800), #e3e5e8);
+    --text-color-gray-700: light-dark(var(--color-gray-700), #cdd1d6);
+    --text-color-gray-600: light-dark(var(--color-gray-600), #b4b9c0);
+    --text-color-gray-500: light-dark(#5f6673, #9ca1a8);
+    --text-color-gray-400: light-dark(#676e7b, #8f96a0);
+    --text-color-gray-300: light-dark(var(--color-gray-300), #7b838e);
+    --text-color-gray-200: light-dark(var(--color-gray-200), #5b636e);
+    --background-color-gray-50: light-dark(var(--color-gray-50), #1a2028);
+    --background-color-gray-100: light-dark(var(--color-gray-100), #212730);
+    --background-color-gray-200: light-dark(var(--color-gray-200), #2b323c);
+    --background-color-gray-300: light-dark(var(--color-gray-300), #3a424e);
+    --border-color-gray-100: light-dark(var(--color-gray-100), #20262e);
+    --border-color-gray-200: light-dark(var(--color-gray-200), #262b33);
+    --border-color-gray-300: light-dark(var(--color-gray-300), #343b45);
+    --border-color-gray-400: light-dark(var(--color-gray-400), #4a525e);
+
+    /* slate: neutral text, surfaces and outlines */
+    --text-color-slate-950: light-dark(var(--color-slate-950), #ffffff);
+    --text-color-slate-900: light-dark(var(--color-slate-900), #f3f4f2);
+    --text-color-slate-800: light-dark(var(--color-slate-800), #e3e5e8);
+    --text-color-slate-700: light-dark(var(--color-slate-700), #cdd1d6);
+    --text-color-slate-600: light-dark(var(--color-slate-600), #b4b9c0);
+    --text-color-slate-500: light-dark(#5f6673, #9ca1a8);
+    --text-color-slate-400: light-dark(#676e7b, #8f96a0);
+    --text-color-slate-300: light-dark(var(--color-slate-300), #7b838e);
+    --text-color-slate-200: light-dark(var(--color-slate-200), #5b636e);
+    --background-color-slate-50: light-dark(var(--color-slate-50), #1a2028);
+    --background-color-slate-100: light-dark(var(--color-slate-100), #212730);
+    --background-color-slate-200: light-dark(var(--color-slate-200), #2b323c);
+    --background-color-slate-300: light-dark(var(--color-slate-300), #3a424e);
+    --border-color-slate-100: light-dark(var(--color-slate-100), #20262e);
+    --border-color-slate-200: light-dark(var(--color-slate-200), #262b33);
+    --border-color-slate-300: light-dark(var(--color-slate-300), #343b45);
+    --border-color-slate-400: light-dark(var(--color-slate-400), #4a525e);
+
+    /* red */
+    --text-color-red-600: light-dark(var(--color-red-600), var(--color-red-400));
+    --text-color-red-700: light-dark(var(--color-red-700), var(--color-red-300));
+    --text-color-red-800: light-dark(var(--color-red-800), var(--color-red-200));
+    --text-color-red-900: light-dark(var(--color-red-900), var(--color-red-100));
+    --text-color-red-950: light-dark(var(--color-red-950), var(--color-red-50));
+    --background-color-red-50: light-dark(var(--color-red-50), color-mix(in oklab, var(--color-red-500) 14%, #151a21));
+    --background-color-red-100: light-dark(var(--color-red-100), color-mix(in oklab, var(--color-red-500) 22%, #151a21));
+    --background-color-red-200: light-dark(var(--color-red-200), color-mix(in oklab, var(--color-red-500) 30%, #151a21));
+    --background-color-red-300: light-dark(var(--color-red-300), color-mix(in oklab, var(--color-red-500) 40%, #151a21));
+    --border-color-red-100: light-dark(var(--color-red-100), color-mix(in oklab, var(--color-red-500) 24%, #151a21));
+    --border-color-red-200: light-dark(var(--color-red-200), color-mix(in oklab, var(--color-red-500) 34%, #151a21));
+    --border-color-red-300: light-dark(var(--color-red-300), color-mix(in oklab, var(--color-red-500) 46%, #151a21));
+
+    /* orange */
+    --text-color-orange-600: light-dark(var(--color-orange-600), var(--color-orange-400));
+    --text-color-orange-700: light-dark(var(--color-orange-700), var(--color-orange-300));
+    --text-color-orange-800: light-dark(var(--color-orange-800), var(--color-orange-200));
+    --text-color-orange-900: light-dark(var(--color-orange-900), var(--color-orange-100));
+    --text-color-orange-950: light-dark(var(--color-orange-950), var(--color-orange-50));
+    --background-color-orange-50: light-dark(var(--color-orange-50), color-mix(in oklab, var(--color-orange-500) 14%, #151a21));
+    --background-color-orange-100: light-dark(var(--color-orange-100), color-mix(in oklab, var(--color-orange-500) 22%, #151a21));
+    --background-color-orange-200: light-dark(var(--color-orange-200), color-mix(in oklab, var(--color-orange-500) 30%, #151a21));
+    --background-color-orange-300: light-dark(var(--color-orange-300), color-mix(in oklab, var(--color-orange-500) 40%, #151a21));
+    --border-color-orange-100: light-dark(var(--color-orange-100), color-mix(in oklab, var(--color-orange-500) 24%, #151a21));
+    --border-color-orange-200: light-dark(var(--color-orange-200), color-mix(in oklab, var(--color-orange-500) 34%, #151a21));
+    --border-color-orange-300: light-dark(var(--color-orange-300), color-mix(in oklab, var(--color-orange-500) 46%, #151a21));
+
+    /* amber */
+    --text-color-amber-600: light-dark(var(--color-amber-600), var(--color-amber-400));
+    --text-color-amber-700: light-dark(var(--color-amber-700), var(--color-amber-300));
+    --text-color-amber-800: light-dark(var(--color-amber-800), var(--color-amber-200));
+    --text-color-amber-900: light-dark(var(--color-amber-900), var(--color-amber-100));
+    --text-color-amber-950: light-dark(var(--color-amber-950), var(--color-amber-50));
+    --background-color-amber-50: light-dark(var(--color-amber-50), color-mix(in oklab, var(--color-amber-500) 14%, #151a21));
+    --background-color-amber-100: light-dark(var(--color-amber-100), color-mix(in oklab, var(--color-amber-500) 22%, #151a21));
+    --background-color-amber-200: light-dark(var(--color-amber-200), color-mix(in oklab, var(--color-amber-500) 30%, #151a21));
+    --background-color-amber-300: light-dark(var(--color-amber-300), color-mix(in oklab, var(--color-amber-500) 40%, #151a21));
+    --border-color-amber-100: light-dark(var(--color-amber-100), color-mix(in oklab, var(--color-amber-500) 24%, #151a21));
+    --border-color-amber-200: light-dark(var(--color-amber-200), color-mix(in oklab, var(--color-amber-500) 34%, #151a21));
+    --border-color-amber-300: light-dark(var(--color-amber-300), color-mix(in oklab, var(--color-amber-500) 46%, #151a21));
+
+    /* yellow */
+    --text-color-yellow-600: light-dark(var(--color-yellow-600), var(--color-yellow-400));
+    --text-color-yellow-700: light-dark(var(--color-yellow-700), var(--color-yellow-300));
+    --text-color-yellow-800: light-dark(var(--color-yellow-800), var(--color-yellow-200));
+    --text-color-yellow-900: light-dark(var(--color-yellow-900), var(--color-yellow-100));
+    --text-color-yellow-950: light-dark(var(--color-yellow-950), var(--color-yellow-50));
+    --background-color-yellow-50: light-dark(var(--color-yellow-50), color-mix(in oklab, var(--color-yellow-500) 14%, #151a21));
+    --background-color-yellow-100: light-dark(var(--color-yellow-100), color-mix(in oklab, var(--color-yellow-500) 22%, #151a21));
+    --background-color-yellow-200: light-dark(var(--color-yellow-200), color-mix(in oklab, var(--color-yellow-500) 30%, #151a21));
+    --background-color-yellow-300: light-dark(var(--color-yellow-300), color-mix(in oklab, var(--color-yellow-500) 40%, #151a21));
+    --border-color-yellow-100: light-dark(var(--color-yellow-100), color-mix(in oklab, var(--color-yellow-500) 24%, #151a21));
+    --border-color-yellow-200: light-dark(var(--color-yellow-200), color-mix(in oklab, var(--color-yellow-500) 34%, #151a21));
+    --border-color-yellow-300: light-dark(var(--color-yellow-300), color-mix(in oklab, var(--color-yellow-500) 46%, #151a21));
+
+    /* lime */
+    --text-color-lime-600: light-dark(var(--color-lime-600), var(--color-lime-400));
+    --text-color-lime-700: light-dark(var(--color-lime-700), var(--color-lime-300));
+    --text-color-lime-800: light-dark(var(--color-lime-800), var(--color-lime-200));
+    --text-color-lime-900: light-dark(var(--color-lime-900), var(--color-lime-100));
+    --text-color-lime-950: light-dark(var(--color-lime-950), var(--color-lime-50));
+    --background-color-lime-50: light-dark(var(--color-lime-50), color-mix(in oklab, var(--color-lime-500) 14%, #151a21));
+    --background-color-lime-100: light-dark(var(--color-lime-100), color-mix(in oklab, var(--color-lime-500) 22%, #151a21));
+    --background-color-lime-200: light-dark(var(--color-lime-200), color-mix(in oklab, var(--color-lime-500) 30%, #151a21));
+    --background-color-lime-300: light-dark(var(--color-lime-300), color-mix(in oklab, var(--color-lime-500) 40%, #151a21));
+    --border-color-lime-100: light-dark(var(--color-lime-100), color-mix(in oklab, var(--color-lime-500) 24%, #151a21));
+    --border-color-lime-200: light-dark(var(--color-lime-200), color-mix(in oklab, var(--color-lime-500) 34%, #151a21));
+    --border-color-lime-300: light-dark(var(--color-lime-300), color-mix(in oklab, var(--color-lime-500) 46%, #151a21));
+
+    /* green */
+    --text-color-green-600: light-dark(var(--color-green-600), var(--color-green-400));
+    --text-color-green-700: light-dark(var(--color-green-700), var(--color-green-300));
+    --text-color-green-800: light-dark(var(--color-green-800), var(--color-green-200));
+    --text-color-green-900: light-dark(var(--color-green-900), var(--color-green-100));
+    --text-color-green-950: light-dark(var(--color-green-950), var(--color-green-50));
+    --background-color-green-50: light-dark(var(--color-green-50), color-mix(in oklab, var(--color-green-500) 14%, #151a21));
+    --background-color-green-100: light-dark(var(--color-green-100), color-mix(in oklab, var(--color-green-500) 22%, #151a21));
+    --background-color-green-200: light-dark(var(--color-green-200), color-mix(in oklab, var(--color-green-500) 30%, #151a21));
+    --background-color-green-300: light-dark(var(--color-green-300), color-mix(in oklab, var(--color-green-500) 40%, #151a21));
+    --border-color-green-100: light-dark(var(--color-green-100), color-mix(in oklab, var(--color-green-500) 24%, #151a21));
+    --border-color-green-200: light-dark(var(--color-green-200), color-mix(in oklab, var(--color-green-500) 34%, #151a21));
+    --border-color-green-300: light-dark(var(--color-green-300), color-mix(in oklab, var(--color-green-500) 46%, #151a21));
+
+    /* emerald */
+    --text-color-emerald-600: light-dark(var(--color-emerald-600), var(--color-emerald-400));
+    --text-color-emerald-700: light-dark(var(--color-emerald-700), var(--color-emerald-300));
+    --text-color-emerald-800: light-dark(var(--color-emerald-800), var(--color-emerald-200));
+    --text-color-emerald-900: light-dark(var(--color-emerald-900), var(--color-emerald-100));
+    --text-color-emerald-950: light-dark(var(--color-emerald-950), var(--color-emerald-50));
+    --background-color-emerald-50: light-dark(var(--color-emerald-50), color-mix(in oklab, var(--color-emerald-500) 14%, #151a21));
+    --background-color-emerald-100: light-dark(var(--color-emerald-100), color-mix(in oklab, var(--color-emerald-500) 22%, #151a21));
+    --background-color-emerald-200: light-dark(var(--color-emerald-200), color-mix(in oklab, var(--color-emerald-500) 30%, #151a21));
+    --background-color-emerald-300: light-dark(var(--color-emerald-300), color-mix(in oklab, var(--color-emerald-500) 40%, #151a21));
+    --border-color-emerald-100: light-dark(var(--color-emerald-100), color-mix(in oklab, var(--color-emerald-500) 24%, #151a21));
+    --border-color-emerald-200: light-dark(var(--color-emerald-200), color-mix(in oklab, var(--color-emerald-500) 34%, #151a21));
+    --border-color-emerald-300: light-dark(var(--color-emerald-300), color-mix(in oklab, var(--color-emerald-500) 46%, #151a21));
+
+    /* teal */
+    --text-color-teal-600: light-dark(var(--color-teal-600), var(--color-teal-400));
+    --text-color-teal-700: light-dark(var(--color-teal-700), var(--color-teal-300));
+    --text-color-teal-800: light-dark(var(--color-teal-800), var(--color-teal-200));
+    --text-color-teal-900: light-dark(var(--color-teal-900), var(--color-teal-100));
+    --text-color-teal-950: light-dark(var(--color-teal-950), var(--color-teal-50));
+    --background-color-teal-50: light-dark(var(--color-teal-50), color-mix(in oklab, var(--color-teal-500) 14%, #151a21));
+    --background-color-teal-100: light-dark(var(--color-teal-100), color-mix(in oklab, var(--color-teal-500) 22%, #151a21));
+    --background-color-teal-200: light-dark(var(--color-teal-200), color-mix(in oklab, var(--color-teal-500) 30%, #151a21));
+    --background-color-teal-300: light-dark(var(--color-teal-300), color-mix(in oklab, var(--color-teal-500) 40%, #151a21));
+    --border-color-teal-100: light-dark(var(--color-teal-100), color-mix(in oklab, var(--color-teal-500) 24%, #151a21));
+    --border-color-teal-200: light-dark(var(--color-teal-200), color-mix(in oklab, var(--color-teal-500) 34%, #151a21));
+    --border-color-teal-300: light-dark(var(--color-teal-300), color-mix(in oklab, var(--color-teal-500) 46%, #151a21));
+
+    /* cyan */
+    --text-color-cyan-600: light-dark(var(--color-cyan-600), var(--color-cyan-400));
+    --text-color-cyan-700: light-dark(var(--color-cyan-700), var(--color-cyan-300));
+    --text-color-cyan-800: light-dark(var(--color-cyan-800), var(--color-cyan-200));
+    --text-color-cyan-900: light-dark(var(--color-cyan-900), var(--color-cyan-100));
+    --text-color-cyan-950: light-dark(var(--color-cyan-950), var(--color-cyan-50));
+    --background-color-cyan-50: light-dark(var(--color-cyan-50), color-mix(in oklab, var(--color-cyan-500) 14%, #151a21));
+    --background-color-cyan-100: light-dark(var(--color-cyan-100), color-mix(in oklab, var(--color-cyan-500) 22%, #151a21));
+    --background-color-cyan-200: light-dark(var(--color-cyan-200), color-mix(in oklab, var(--color-cyan-500) 30%, #151a21));
+    --background-color-cyan-300: light-dark(var(--color-cyan-300), color-mix(in oklab, var(--color-cyan-500) 40%, #151a21));
+    --border-color-cyan-100: light-dark(var(--color-cyan-100), color-mix(in oklab, var(--color-cyan-500) 24%, #151a21));
+    --border-color-cyan-200: light-dark(var(--color-cyan-200), color-mix(in oklab, var(--color-cyan-500) 34%, #151a21));
+    --border-color-cyan-300: light-dark(var(--color-cyan-300), color-mix(in oklab, var(--color-cyan-500) 46%, #151a21));
+
+    /* sky */
+    --text-color-sky-600: light-dark(var(--color-sky-600), var(--color-sky-400));
+    --text-color-sky-700: light-dark(var(--color-sky-700), var(--color-sky-300));
+    --text-color-sky-800: light-dark(var(--color-sky-800), var(--color-sky-200));
+    --text-color-sky-900: light-dark(var(--color-sky-900), var(--color-sky-100));
+    --text-color-sky-950: light-dark(var(--color-sky-950), var(--color-sky-50));
+    --background-color-sky-50: light-dark(var(--color-sky-50), color-mix(in oklab, var(--color-sky-500) 14%, #151a21));
+    --background-color-sky-100: light-dark(var(--color-sky-100), color-mix(in oklab, var(--color-sky-500) 22%, #151a21));
+    --background-color-sky-200: light-dark(var(--color-sky-200), color-mix(in oklab, var(--color-sky-500) 30%, #151a21));
+    --background-color-sky-300: light-dark(var(--color-sky-300), color-mix(in oklab, var(--color-sky-500) 40%, #151a21));
+    --border-color-sky-100: light-dark(var(--color-sky-100), color-mix(in oklab, var(--color-sky-500) 24%, #151a21));
+    --border-color-sky-200: light-dark(var(--color-sky-200), color-mix(in oklab, var(--color-sky-500) 34%, #151a21));
+    --border-color-sky-300: light-dark(var(--color-sky-300), color-mix(in oklab, var(--color-sky-500) 46%, #151a21));
+
+    /* blue */
+    --text-color-blue-600: light-dark(var(--color-blue-600), var(--color-blue-400));
+    --text-color-blue-700: light-dark(var(--color-blue-700), var(--color-blue-300));
+    --text-color-blue-800: light-dark(var(--color-blue-800), var(--color-blue-200));
+    --text-color-blue-900: light-dark(var(--color-blue-900), var(--color-blue-100));
+    --text-color-blue-950: light-dark(var(--color-blue-950), var(--color-blue-50));
+    --background-color-blue-50: light-dark(var(--color-blue-50), color-mix(in oklab, var(--color-blue-500) 14%, #151a21));
+    --background-color-blue-100: light-dark(var(--color-blue-100), color-mix(in oklab, var(--color-blue-500) 22%, #151a21));
+    --background-color-blue-200: light-dark(var(--color-blue-200), color-mix(in oklab, var(--color-blue-500) 30%, #151a21));
+    --background-color-blue-300: light-dark(var(--color-blue-300), color-mix(in oklab, var(--color-blue-500) 40%, #151a21));
+    --border-color-blue-100: light-dark(var(--color-blue-100), color-mix(in oklab, var(--color-blue-500) 24%, #151a21));
+    --border-color-blue-200: light-dark(var(--color-blue-200), color-mix(in oklab, var(--color-blue-500) 34%, #151a21));
+    --border-color-blue-300: light-dark(var(--color-blue-300), color-mix(in oklab, var(--color-blue-500) 46%, #151a21));
+
+    /* indigo */
+    --text-color-indigo-600: light-dark(var(--color-indigo-600), var(--color-indigo-400));
+    --text-color-indigo-700: light-dark(var(--color-indigo-700), var(--color-indigo-300));
+    --text-color-indigo-800: light-dark(var(--color-indigo-800), var(--color-indigo-200));
+    --text-color-indigo-900: light-dark(var(--color-indigo-900), var(--color-indigo-100));
+    --text-color-indigo-950: light-dark(var(--color-indigo-950), var(--color-indigo-50));
+    --background-color-indigo-50: light-dark(var(--color-indigo-50), color-mix(in oklab, var(--color-indigo-500) 14%, #151a21));
+    --background-color-indigo-100: light-dark(var(--color-indigo-100), color-mix(in oklab, var(--color-indigo-500) 22%, #151a21));
+    --background-color-indigo-200: light-dark(var(--color-indigo-200), color-mix(in oklab, var(--color-indigo-500) 30%, #151a21));
+    --background-color-indigo-300: light-dark(var(--color-indigo-300), color-mix(in oklab, var(--color-indigo-500) 40%, #151a21));
+    --border-color-indigo-100: light-dark(var(--color-indigo-100), color-mix(in oklab, var(--color-indigo-500) 24%, #151a21));
+    --border-color-indigo-200: light-dark(var(--color-indigo-200), color-mix(in oklab, var(--color-indigo-500) 34%, #151a21));
+    --border-color-indigo-300: light-dark(var(--color-indigo-300), color-mix(in oklab, var(--color-indigo-500) 46%, #151a21));
+
+    /* violet */
+    --text-color-violet-600: light-dark(var(--color-violet-600), var(--color-violet-400));
+    --text-color-violet-700: light-dark(var(--color-violet-700), var(--color-violet-300));
+    --text-color-violet-800: light-dark(var(--color-violet-800), var(--color-violet-200));
+    --text-color-violet-900: light-dark(var(--color-violet-900), var(--color-violet-100));
+    --text-color-violet-950: light-dark(var(--color-violet-950), var(--color-violet-50));
+    --background-color-violet-50: light-dark(var(--color-violet-50), color-mix(in oklab, var(--color-violet-500) 14%, #151a21));
+    --background-color-violet-100: light-dark(var(--color-violet-100), color-mix(in oklab, var(--color-violet-500) 22%, #151a21));
+    --background-color-violet-200: light-dark(var(--color-violet-200), color-mix(in oklab, var(--color-violet-500) 30%, #151a21));
+    --background-color-violet-300: light-dark(var(--color-violet-300), color-mix(in oklab, var(--color-violet-500) 40%, #151a21));
+    --border-color-violet-100: light-dark(var(--color-violet-100), color-mix(in oklab, var(--color-violet-500) 24%, #151a21));
+    --border-color-violet-200: light-dark(var(--color-violet-200), color-mix(in oklab, var(--color-violet-500) 34%, #151a21));
+    --border-color-violet-300: light-dark(var(--color-violet-300), color-mix(in oklab, var(--color-violet-500) 46%, #151a21));
+
+    /* purple */
+    --text-color-purple-600: light-dark(var(--color-purple-600), var(--color-purple-400));
+    --text-color-purple-700: light-dark(var(--color-purple-700), var(--color-purple-300));
+    --text-color-purple-800: light-dark(var(--color-purple-800), var(--color-purple-200));
+    --text-color-purple-900: light-dark(var(--color-purple-900), var(--color-purple-100));
+    --text-color-purple-950: light-dark(var(--color-purple-950), var(--color-purple-50));
+    --background-color-purple-50: light-dark(var(--color-purple-50), color-mix(in oklab, var(--color-purple-500) 14%, #151a21));
+    --background-color-purple-100: light-dark(var(--color-purple-100), color-mix(in oklab, var(--color-purple-500) 22%, #151a21));
+    --background-color-purple-200: light-dark(var(--color-purple-200), color-mix(in oklab, var(--color-purple-500) 30%, #151a21));
+    --background-color-purple-300: light-dark(var(--color-purple-300), color-mix(in oklab, var(--color-purple-500) 40%, #151a21));
+    --border-color-purple-100: light-dark(var(--color-purple-100), color-mix(in oklab, var(--color-purple-500) 24%, #151a21));
+    --border-color-purple-200: light-dark(var(--color-purple-200), color-mix(in oklab, var(--color-purple-500) 34%, #151a21));
+    --border-color-purple-300: light-dark(var(--color-purple-300), color-mix(in oklab, var(--color-purple-500) 46%, #151a21));
+
+    /* fuchsia */
+    --text-color-fuchsia-600: light-dark(var(--color-fuchsia-600), var(--color-fuchsia-400));
+    --text-color-fuchsia-700: light-dark(var(--color-fuchsia-700), var(--color-fuchsia-300));
+    --text-color-fuchsia-800: light-dark(var(--color-fuchsia-800), var(--color-fuchsia-200));
+    --text-color-fuchsia-900: light-dark(var(--color-fuchsia-900), var(--color-fuchsia-100));
+    --text-color-fuchsia-950: light-dark(var(--color-fuchsia-950), var(--color-fuchsia-50));
+    --background-color-fuchsia-50: light-dark(var(--color-fuchsia-50), color-mix(in oklab, var(--color-fuchsia-500) 14%, #151a21));
+    --background-color-fuchsia-100: light-dark(var(--color-fuchsia-100), color-mix(in oklab, var(--color-fuchsia-500) 22%, #151a21));
+    --background-color-fuchsia-200: light-dark(var(--color-fuchsia-200), color-mix(in oklab, var(--color-fuchsia-500) 30%, #151a21));
+    --background-color-fuchsia-300: light-dark(var(--color-fuchsia-300), color-mix(in oklab, var(--color-fuchsia-500) 40%, #151a21));
+    --border-color-fuchsia-100: light-dark(var(--color-fuchsia-100), color-mix(in oklab, var(--color-fuchsia-500) 24%, #151a21));
+    --border-color-fuchsia-200: light-dark(var(--color-fuchsia-200), color-mix(in oklab, var(--color-fuchsia-500) 34%, #151a21));
+    --border-color-fuchsia-300: light-dark(var(--color-fuchsia-300), color-mix(in oklab, var(--color-fuchsia-500) 46%, #151a21));
+
+    /* pink */
+    --text-color-pink-600: light-dark(var(--color-pink-600), var(--color-pink-400));
+    --text-color-pink-700: light-dark(var(--color-pink-700), var(--color-pink-300));
+    --text-color-pink-800: light-dark(var(--color-pink-800), var(--color-pink-200));
+    --text-color-pink-900: light-dark(var(--color-pink-900), var(--color-pink-100));
+    --text-color-pink-950: light-dark(var(--color-pink-950), var(--color-pink-50));
+    --background-color-pink-50: light-dark(var(--color-pink-50), color-mix(in oklab, var(--color-pink-500) 14%, #151a21));
+    --background-color-pink-100: light-dark(var(--color-pink-100), color-mix(in oklab, var(--color-pink-500) 22%, #151a21));
+    --background-color-pink-200: light-dark(var(--color-pink-200), color-mix(in oklab, var(--color-pink-500) 30%, #151a21));
+    --background-color-pink-300: light-dark(var(--color-pink-300), color-mix(in oklab, var(--color-pink-500) 40%, #151a21));
+    --border-color-pink-100: light-dark(var(--color-pink-100), color-mix(in oklab, var(--color-pink-500) 24%, #151a21));
+    --border-color-pink-200: light-dark(var(--color-pink-200), color-mix(in oklab, var(--color-pink-500) 34%, #151a21));
+    --border-color-pink-300: light-dark(var(--color-pink-300), color-mix(in oklab, var(--color-pink-500) 46%, #151a21));
+
+    /* rose */
+    --text-color-rose-600: light-dark(var(--color-rose-600), var(--color-rose-400));
+    --text-color-rose-700: light-dark(var(--color-rose-700), var(--color-rose-300));
+    --text-color-rose-800: light-dark(var(--color-rose-800), var(--color-rose-200));
+    --text-color-rose-900: light-dark(var(--color-rose-900), var(--color-rose-100));
+    --text-color-rose-950: light-dark(var(--color-rose-950), var(--color-rose-50));
+    --background-color-rose-50: light-dark(var(--color-rose-50), color-mix(in oklab, var(--color-rose-500) 14%, #151a21));
+    --background-color-rose-100: light-dark(var(--color-rose-100), color-mix(in oklab, var(--color-rose-500) 22%, #151a21));
+    --background-color-rose-200: light-dark(var(--color-rose-200), color-mix(in oklab, var(--color-rose-500) 30%, #151a21));
+    --background-color-rose-300: light-dark(var(--color-rose-300), color-mix(in oklab, var(--color-rose-500) 40%, #151a21));
+    --border-color-rose-100: light-dark(var(--color-rose-100), color-mix(in oklab, var(--color-rose-500) 24%, #151a21));
+    --border-color-rose-200: light-dark(var(--color-rose-200), color-mix(in oklab, var(--color-rose-500) 34%, #151a21));
+    --border-color-rose-300: light-dark(var(--color-rose-300), color-mix(in oklab, var(--color-rose-500) 46%, #151a21));
+}

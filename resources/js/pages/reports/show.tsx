@@ -11,7 +11,7 @@ import AppLayout from '@/layouts/app-layout'
 import { getCsrfToken } from '@/lib/csrf'
 import { flashError, flashSuccess } from '@/lib/flash'
 import { goBack } from '@/lib/navigation'
-import { isIssueOverdue } from '@/lib/utils'
+import { isIssueOverdue, labelStyle } from '@/lib/utils'
 
 interface ReportLabel {
   id: number
@@ -236,9 +236,9 @@ const priorityConfig = {
 
 const severityConfig = {
   critical: { label: 'Critical', bg: 'bg-red-600', text: 'text-white' },
-  major: { label: 'Major', bg: 'bg-orange-500', text: 'text-white' },
-  minor: { label: 'Minor', bg: 'bg-yellow-500', text: 'text-white' },
-  trivial: { label: 'Trivial', bg: 'bg-gray-400', text: 'text-white' },
+  major: { label: 'Major', bg: 'bg-orange-500', text: 'text-black' },
+  minor: { label: 'Minor', bg: 'bg-yellow-500', text: 'text-black' },
+  trivial: { label: 'Trivial', bg: 'bg-gray-500', text: 'text-white' },
 }
 
 // The Edit Issue form's starting values for an issue
@@ -572,7 +572,7 @@ export default function ReportShow() {
                   <span
                     key={label.id}
                     className="px-2.5 py-1 rounded-full text-xs font-medium"
-                    style={{ backgroundColor: label.color + '20', color: label.color }}
+                    style={labelStyle(label.color)}
                   >
                     {label.name}
                   </span>
@@ -605,13 +605,13 @@ export default function ReportShow() {
               </Button>
             )}
             {canClose && (
-              <Button onClick={() => handleAction('close')} disabled={loading} variant="outline" className="bg-white">
+              <Button onClick={() => handleAction('close')} disabled={loading} variant="outline" className="bg-card">
                 <CheckCircle2 className="w-4 h-4 mr-2" />
                 Close
               </Button>
             )}
             {canReopen && (
-              <Button onClick={() => setShowReopenModal(true)} disabled={loading} variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800">
+              <Button onClick={() => setShowReopenModal(true)} disabled={loading} variant="outline" className="border-red-200 bg-card text-red-700 hover:bg-red-50 hover:text-red-800">
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Reopen
               </Button>
@@ -645,7 +645,7 @@ export default function ReportShow() {
                   Confirm Fixed
                 </Button>
                 {abilities.reopen && (
-                  <Button onClick={() => setShowReopenModal(true)} disabled={loading} variant="outline" className="border-purple-300 bg-white text-purple-800 hover:bg-purple-100 hover:text-purple-900">
+                  <Button onClick={() => setShowReopenModal(true)} disabled={loading} variant="outline" className="border-purple-300 bg-card text-purple-800 hover:bg-purple-100 hover:text-purple-900">
                     <RotateCcw className="w-4 h-4 mr-2" />
                     Not Fixed
                   </Button>
@@ -664,7 +664,7 @@ export default function ReportShow() {
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white border rounded-xl p-4">
+          <div className="bg-card border rounded-xl p-4">
             <div className="flex items-center gap-3">
               <div className={`p-2.5 rounded-lg ${priority.bg}`}>
                 <PriorityIcon className={`w-5 h-5 ${priority.color}`} />
@@ -675,7 +675,7 @@ export default function ReportShow() {
               </div>
             </div>
           </div>
-          <div className="bg-white border rounded-xl p-4">
+          <div className="bg-card border rounded-xl p-4">
             <div className="flex items-center gap-3">
               {isFeature ? (
                 <>
@@ -700,7 +700,7 @@ export default function ReportShow() {
               )}
             </div>
           </div>
-          <div className="bg-white border rounded-xl p-4">
+          <div className="bg-card border rounded-xl p-4">
             <div className="flex items-center gap-3">
               <div className={`p-2.5 rounded-lg ${isOverdue ? 'bg-red-50' : 'bg-gray-50'}`}>
                 <Calendar className={`w-5 h-5 ${isOverdue ? 'text-red-600' : 'text-gray-600'}`} />
@@ -713,7 +713,7 @@ export default function ReportShow() {
               </div>
             </div>
           </div>
-          <div className="bg-white border rounded-xl p-4">
+          <div className="bg-card border rounded-xl p-4">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-lg bg-indigo-50">
                 <Timer className="w-5 h-5 text-indigo-600" />
@@ -734,11 +734,11 @@ export default function ReportShow() {
           {/* Left Column - Main Content */}
           <div className="lg:col-span-3 space-y-6">
             {/* Description */}
-            <div className="bg-white border rounded-xl overflow-hidden">
+            <div className="bg-card border rounded-xl overflow-hidden">
               <div className="px-5 py-4 border-b flex items-center justify-between">
                 <h2 className="font-medium text-gray-900">Description</h2>
                 {isEditing && (
-                  <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">Editing</span>
+                  <span className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded">Editing</span>
                 )}
               </div>
               <div className="p-5">
@@ -859,7 +859,7 @@ export default function ReportShow() {
             )}
 
             {/* Attachments */}
-            <div className="bg-white border rounded-xl overflow-hidden">
+            <div className="bg-card border rounded-xl overflow-hidden">
               <div className="px-5 py-4 border-b flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Paperclip className="w-4 h-4 text-gray-400" />
@@ -968,7 +968,7 @@ export default function ReportShow() {
             </div>
 
             {/* Comments */}
-            <div className="bg-white border rounded-xl overflow-hidden">
+            <div className="bg-card border rounded-xl overflow-hidden">
               <div className="px-5 py-4 border-b flex items-center gap-2">
                 <MessageCircle className="w-4 h-4 text-gray-400" />
                 <h2 className="font-medium text-gray-900">Comments</h2>
@@ -1033,7 +1033,7 @@ export default function ReportShow() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* People */}
-            <div className="bg-white border rounded-xl p-5">
+            <div className="bg-card border rounded-xl p-5">
               <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">People</h3>
               <div className="space-y-4">
                 <div>
@@ -1092,7 +1092,7 @@ export default function ReportShow() {
 
                     {/* Assignee Dropdown */}
                     {showAssigneeDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-20 max-h-64 overflow-y-auto">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-card border rounded-lg shadow-lg z-20 max-h-64 overflow-y-auto">
                         {/* Unassign option */}
                         {report.assignee && (
                           <button
@@ -1156,7 +1156,7 @@ export default function ReportShow() {
 
             {/* Linked Issues */}
             {((report.outgoing_links && report.outgoing_links.length > 0) || (report.incoming_links && report.incoming_links.length > 0)) && (
-              <div className="bg-white border rounded-xl p-5">
+              <div className="bg-card border rounded-xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Linked Issues</h3>
                 </div>
@@ -1186,7 +1186,7 @@ export default function ReportShow() {
             )}
 
             {/* Activity */}
-            <div className="bg-white border rounded-xl p-5">
+            <div className="bg-card border rounded-xl p-5">
               <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Activity</h3>
               <ol className="max-h-[32rem] overflow-y-auto pr-1">
                 {timeline.map((entry, index) => (
@@ -1230,7 +1230,7 @@ export default function ReportShow() {
       {/* Resolve Modal */}
       {showResolveModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-card rounded-xl p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold mb-4">Resolve Issue</h3>
             <div className="space-y-4">
               <div>
@@ -1256,7 +1256,7 @@ export default function ReportShow() {
       {/* Reopen Modal */}
       {showReopenModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-card rounded-xl p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold mb-4">Reopen Issue</h3>
             <div className="space-y-4">
               <div>

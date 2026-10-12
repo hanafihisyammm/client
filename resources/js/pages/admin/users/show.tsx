@@ -135,7 +135,7 @@ export default function Show({ user }: Props) {
                 </div>
 
                 {/* Profile Card */}
-                <div className="bg-white shadow-sm border rounded-xl overflow-hidden">
+                <div className="bg-card shadow-sm border rounded-xl overflow-hidden">
                     {/* Profile Content */}
                     <div className="px-8 py-8">
                         {/* Avatar & Name */}

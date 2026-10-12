@@ -41,6 +41,14 @@ interface Props {
 
 const NEW_MANAGER = 'new';
 
+/** A company's team is its staff plus its manager. */
+function teamOf(company: { staff_count: number; active_staff_count: number; manager: { deactivated_at?: string | null } | null }) {
+    return {
+        total: company.staff_count + (company.manager ? 1 : 0),
+        active: company.active_staff_count + (company.manager && !company.manager.deactivated_at ? 1 : 0),
+    };
+}
+
 export default function ClientsIndex({ companies, availableManagers }: Props) {
     const [search, setSearch] = useState('');
     const [showCreate, setShowCreate] = useState(false);
@@ -88,7 +96,7 @@ export default function ClientsIndex({ companies, availableManagers }: Props) {
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <StatCard icon={Building2} label="Client Companies" value={companies.length} />
-                    <StatCard icon={Users} label="Staff" value={companies.reduce((sum, company) => sum + company.staff_count, 0)} />
+                    <StatCard icon={Users} label="Team Members" value={companies.reduce((sum, company) => sum + teamOf(company).total, 0)} hint="Managers and staff" />
                     <StatCard icon={FolderKanban} label="Projects" value={companies.reduce((sum, company) => sum + company.projects_count, 0)} />
                 </div>
 
@@ -99,7 +107,7 @@ export default function ClientsIndex({ companies, availableManagers }: Props) {
                             placeholder="Search clients or managers..."
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
-                            className="h-9 bg-white pl-9"
+                            className="h-9 bg-card pl-9"
                         />
                         {search && (
                             <button
@@ -114,14 +122,14 @@ export default function ClientsIndex({ companies, availableManagers }: Props) {
                     </div>
                 </div>
 
-                <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
+                <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-slate-50/50 text-xs font-medium tracking-wider uppercase [&>th]:text-muted-foreground">
                                 <TableHead className="w-[50px]"></TableHead>
                                 <TableHead>Client company</TableHead>
                                 <TableHead>Manager</TableHead>
-                                <TableHead className="text-center">Staff</TableHead>
+                                <TableHead className="text-center">Team</TableHead>
                                 <TableHead className="text-center">Projects</TableHead>
                                 <TableHead className="text-center">Open issues</TableHead>
                                 <TableHead>Status</TableHead>
@@ -185,10 +193,10 @@ export default function ClientsIndex({ companies, availableManagers }: Props) {
                                                 <span className="text-sm text-red-600">No manager</span>
                                             )}
                                         </TableCell>
-                                        <TableCell className="text-center">
-                                            {company.active_staff_count}
-                                            {company.staff_count > company.active_staff_count && (
-                                                <span className="text-xs text-muted-foreground"> of {company.staff_count}</span>
+                                        <TableCell className="text-center" title="The manager plus the company's staff">
+                                            {teamOf(company).active}
+                                            {teamOf(company).total > teamOf(company).active && (
+                                                <span className="text-xs text-muted-foreground"> of {teamOf(company).total}</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-center">{company.projects_count}</TableCell>

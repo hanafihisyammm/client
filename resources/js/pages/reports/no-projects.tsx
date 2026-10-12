@@ -48,7 +48,7 @@ export default function NoProjects({ userRole, message }: PageProps) {
                                 {message}
                             </p>
                             
-                            <div className="bg-white rounded-lg p-4 border border-amber-200">
+                            <div className="bg-card rounded-lg p-4 border border-amber-200">
                                 <div className="flex items-center gap-3 text-sm text-amber-800">
                                     <Users className="w-5 h-5" />
                                     <div className="text-left">

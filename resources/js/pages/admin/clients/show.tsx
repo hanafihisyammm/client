@@ -100,7 +100,7 @@ function SearchBox({ value, onChange, placeholder }: { value: string; onChange: 
     return (
         <div className="relative max-w-md min-w-[220px] flex-1">
             <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <Input placeholder={placeholder} aria-label={placeholder} value={value} onChange={(event) => onChange(event.target.value)} className="h-9 bg-white pl-9" />
+            <Input placeholder={placeholder} aria-label={placeholder} value={value} onChange={(event) => onChange(event.target.value)} className="h-9 bg-card pl-9" />
             {value && (
                 <button
                     type="button"
@@ -160,6 +160,8 @@ function ProjectChecklist({ projects, selected, onChange }: { projects: ProjectS
 
 export default function ClientShow({ company, staff, projects, counts, canManageCompany, canManageStaff, canAssignStaff, canManageProjects, availableManagers }: Props) {
     const base = `/clients/${company.uuid}`;
+    // The manager is on the team of every project in the company
+    const managerOnTeam = company.manager && !company.manager.deactivated_at ? 1 : 0;
     const [showAddStaff, setShowAddStaff] = useState(false);
     const [editing, setEditing] = useState<StaffMember | null>(null);
     // Arriving from "Edit Client" on the list (?edit=1) opens the settings straight away
@@ -367,7 +369,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                 </div>
 
                 {/* Staff and projects share one card, a tab each, so neither is pushed down the page */}
-                <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
+                <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
                     <div className="flex items-center justify-between gap-4 border-b px-5">
                         <div role="tablist" aria-label="Company details" className="flex gap-6">
                             {(
@@ -570,7 +572,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                         <TableHead className="w-[50px]"></TableHead>
                                         <SortHead label="Project" active={projectSort.field === 'name'} order={projectSort.order} onClick={() => sortProjectsBy('name')} />
                                         <SortHead label="Status" active={projectSort.field === 'status'} order={projectSort.order} onClick={() => sortProjectsBy('status')} />
-                                        <SortHead label="Staff" center active={projectSort.field === 'staff'} order={projectSort.order} onClick={() => sortProjectsBy('staff')} />
+                                        <SortHead label="Team" center active={projectSort.field === 'staff'} order={projectSort.order} onClick={() => sortProjectsBy('staff')} />
                                         <SortHead label="Open issues" center active={projectSort.field === 'open'} order={projectSort.order} onClick={() => sortProjectsBy('open')} />
                                         <SortHead label="All issues" center active={projectSort.field === 'all'} order={projectSort.order} onClick={() => sortProjectsBy('all')} />
                                     </TableRow>
@@ -626,7 +628,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                                 </TableCell>
                                                 <TableCell className="font-medium">{project.name}</TableCell>
                                                 <TableCell className="text-sm capitalize">{project.status}</TableCell>
-                                                <TableCell className="text-center">{project.users_count ?? 0}</TableCell>
+                                                <TableCell className="text-center" title="Assigned staff plus the company's manager">{(project.users_count ?? 0) + managerOnTeam}</TableCell>
                                                 <TableCell className="text-center">{project.open_reports_count ?? 0}</TableCell>
                                                 <TableCell className="text-center">{project.reports_count ?? 0}</TableCell>
                                             </TableRow>

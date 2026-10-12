@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Appearance;
+use App\Support\Impersonation;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -46,6 +48,13 @@ class HandleInertiaRequests extends Middleware
                 // The company is included so the menu can link a manager to their own company page
                 'user' => $request->user()?->loadMissing('company:id,uuid,name'),
             ],
+            // "light", "dark" or "system": lets the page follow the user's saved theme
+            // as soon as they log in, without waiting for a full page load
+            'appearance' => fn () => Appearance::for($request),
+            // Set while a Super Admin is signed in as this user, so every page can show the banner
+            'impersonation' => fn () => ($superAdmin = Impersonation::impersonator())
+                ? ['superAdmin' => $superAdmin->name]
+                : null,
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'csrfToken' => csrf_token(),
             // One-off success/error message set by the previous action. The id lets the page

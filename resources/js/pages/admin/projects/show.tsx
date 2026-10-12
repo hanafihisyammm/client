@@ -35,6 +35,7 @@ interface Project {
     updated_at: string;
     creator: UserType;
     users: UserType[];
+    company?: { id: number; uuid: string; name: string; manager?: (UserType & { deactivated_at?: string | null }) | null } | null;
     reports: Report[];
 }
 
@@ -83,7 +84,7 @@ function IssueCard({ report, projectPrefix, dragProps = {}, moving = false }: { 
         <div
             {...dragProps}
             onClick={() => router.get(`/reports/${report.uuid}`)}
-            className={`bg-white border rounded-lg p-3 hover:shadow-md transition-all cursor-pointer group ${moving ? 'opacity-50' : ''}`}
+            className={`bg-card border rounded-lg p-3 hover:shadow-md transition-all cursor-pointer group ${moving ? 'opacity-50' : ''}`}
         >
             <div className="flex items-start justify-between gap-2 mb-2">
                 <span className="text-xs font-mono text-blue-600 group-hover:underline">
@@ -122,6 +123,13 @@ export default function ProjectShow({ project, canManage }: Props) {
     };
 
     // Calculate report stats with new statuses
+    // The company's manager is on the team of every project in the company, ahead of the assigned staff
+    const manager = project.company?.manager;
+    const team =
+        manager && !manager.deactivated_at && !project.users.some(user => user.id === manager.id)
+            ? [manager, ...project.users]
+            : project.users;
+
     const stats = {
         open: project.reports.filter(r => r.status === 'open').length,
         reopened: project.reports.filter(r => r.status === 'reopened').length,
@@ -218,7 +226,7 @@ export default function ProjectShow({ project, canManage }: Props) {
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                     {/* Issues Board */}
                     <div className="lg:col-span-3">
-                        <div className="bg-white border rounded-xl overflow-hidden">
+                        <div className="bg-card border rounded-xl overflow-hidden">
                             <div className="px-5 py-4 border-b flex items-center justify-between">
                                 <h2 className="font-medium text-gray-900">Issues</h2>
                                 <span className="text-sm text-gray-500">
@@ -282,7 +290,7 @@ export default function ProjectShow({ project, canManage }: Props) {
                     {/* Sidebar */}
                     <div className="space-y-6">
                         {/* Project Info */}
-                        <div className="bg-white border rounded-xl p-5">
+                        <div className="bg-card border rounded-xl p-5">
                             <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Details</h3>
                             <div className="space-y-4">
                                 <div>
@@ -310,20 +318,20 @@ export default function ProjectShow({ project, canManage }: Props) {
                         </div>
 
                         {/* Team Members */}
-                        <div className="bg-white border rounded-xl p-5">
+                        <div className="bg-card border rounded-xl p-5">
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Team</h3>
-                                <span className="text-xs text-gray-400">{project.users.length} members</span>
+                                <span className="text-xs text-gray-400">{team.length} {team.length === 1 ? 'member' : 'members'}</span>
                             </div>
 
-                            {project.users.length === 0 ? (
+                            {team.length === 0 ? (
                                 <div className="text-center py-4">
                                     <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
                                     <p className="text-xs text-gray-400">No members</p>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    {project.users.slice(0, 6).map((user) => (
+                                    {team.slice(0, 6).map((user) => (
                                         <div key={user.id} className="flex items-center gap-3">
                                             <div className={`w-8 h-8 rounded-full ${roleColors[user.role || 'staff']} flex items-center justify-center text-white text-xs font-medium`}>
                                                 {user.name.charAt(0)}
@@ -337,9 +345,9 @@ export default function ProjectShow({ project, canManage }: Props) {
                                             </span>
                                         </div>
                                     ))}
-                                    {project.users.length > 6 && (
+                                    {team.length > 6 && (
                                         <p className="text-xs text-center text-gray-400 pt-1">
-                                            +{project.users.length - 6} more members
+                                            +{team.length - 6} more members
                                         </p>
                                     )}
                                 </div>
@@ -347,7 +355,7 @@ export default function ProjectShow({ project, canManage }: Props) {
                         </div>
 
                         {/* Quick Actions */}
-                        <div className="bg-white border rounded-xl p-5">
+                        <div className="bg-card border rounded-xl p-5">
                             <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Quick Actions</h3>
                             <div className="space-y-2">
                                 <Link href={`/reports/create?project=${project.uuid}`} className="block">

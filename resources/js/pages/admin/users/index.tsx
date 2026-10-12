@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,8 +11,8 @@ import { PageHeader } from '@/components/page-header';
 import { StatCard } from '@/components/stat-card';
 import { flashError } from '@/lib/flash';
 import { filterControlClass } from '@/lib/utils';
-import { Head, Link, router, useForm } from '@inertiajs/react';
-import { PlusIcon, Edit, TrashIcon, Search, Eye, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, Users, Shield, UserCog, Code, User, Mail, Calendar, Send, X, Ban, Pencil } from 'lucide-react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { PlusIcon, Edit, TrashIcon, Search, Eye, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, Users, Shield, UserCog, Code, User, Mail, Calendar, Send, X, Ban, Pencil, LogIn } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 interface User {
@@ -128,6 +129,32 @@ export default function Index({ users }: Props) {
             onError: () => flashError(`Could not send the invitation to ${user.email}.`),
         });
     };
+    // "Sign in as" is for Super Admins, and never for another Super Admin, a deactivated
+    // user or someone who has not set up their account yet. The server checks this again.
+    const { auth } = usePage<{ auth: { user: { id: number; role: string } } }>().props;
+    const canSignInAs = (user: User) =>
+        auth.user.role === 'super_admin' && user.id !== auth.user.id && user.role !== 'super_admin' && !!user.email_verified_at && !user.deactivated_at;
+    const signInAs = (user: User) => {
+        router.post(`/users/${user.uuid}/impersonate`, {}, {
+            onError: () => flashError(`Could not sign in as ${user.name}.`),
+        });
+    };
+
+    // Users ticked for "Resend invitations". Only people still waiting to set up can be ticked.
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [resending, setResending] = useState(false);
+    const isPending = (user: User) => !user.email_verified_at && !user.deactivated_at;
+
+    const resendSelected = () => {
+        setResending(true);
+        router.post('/users/invitations', { user_ids: selectedIds }, {
+            preserveScroll: true,
+            onSuccess: () => setSelectedIds([]),
+            onError: (errors) => flashError(String(Object.values(errors)[0] ?? 'Could not resend the invitations.')),
+            onFinish: () => setResending(false),
+        });
+    };
+
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -187,6 +214,18 @@ export default function Index({ users }: Props) {
         });
     }, [users, searchQuery, roleFilter, statusFilter, sortField, sortOrder]);
 
+    // Pending users in the list as it is filtered now; the header tick box selects exactly these
+    const pendingShown = useMemo(() => filteredAndSortedUsers.filter(isPending), [filteredAndSortedUsers]);
+    const allPendingSelected = pendingShown.length > 0 && pendingShown.every(user => selectedIds.includes(user.id));
+    const pendingTotal = useMemo(() => users.filter(isPending).length, [users]);
+
+    const toggleAllPending = (checked: boolean) => {
+        const shownIds = pendingShown.map(user => user.id);
+        setSelectedIds(current => checked
+            ? Array.from(new Set([...current, ...shownIds]))
+            : current.filter(id => !shownIds.includes(id)));
+    };
+
     // Stats
     const stats = useMemo(() => ({
         total: users.length,
@@ -235,7 +274,7 @@ export default function Index({ users }: Props) {
                     <Link href="/users/create">
                         <Button className="shadow-sm">
                             <PlusIcon className="h-4 w-4 mr-2" />
-                            Add User
+                            Add Users
                         </Button>
                     </Link>
                 </PageHeader>
@@ -267,7 +306,7 @@ export default function Index({ users }: Props) {
                             placeholder="Search by name or email..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 h-9 bg-white"
+                            className="pl-9 h-9 bg-card"
                         />
                         {searchQuery && (
                             <button
@@ -330,13 +369,43 @@ export default function Index({ users }: Props) {
                     </p>
                 )}
 
+                {/* Bulk resend: appears once pending users are ticked */}
+                {selectedIds.length > 0 ? (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border bg-brand-cream px-4 py-2.5">
+                        <p className="text-sm font-medium">
+                            {selectedIds.length} pending {selectedIds.length === 1 ? 'user' : 'users'} selected
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedIds([])} disabled={resending}>
+                                Clear
+                            </Button>
+                            <Button size="sm" onClick={resendSelected} disabled={resending}>
+                                <Send className="mr-2 h-4 w-4" />
+                                {resending ? 'Sending...' : selectedIds.length === 1 ? 'Resend Invitation' : `Resend ${selectedIds.length} Invitations`}
+                            </Button>
+                        </div>
+                    </div>
+                ) : pendingTotal > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                        {pendingTotal} {pendingTotal === 1 ? 'user has' : 'users have'} not set up their account yet. Tick them to resend their invitations in one go.
+                    </p>
+                )}
+
                 {/* Table */}
-                <div className="bg-white shadow-sm border rounded-xl overflow-hidden">
+                <div className="bg-card shadow-sm border rounded-xl overflow-hidden">
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-slate-50/50">
                                 {/* Actions come first so the "..." menu is always in the same place */}
                                 <TableHead className="w-[50px]"></TableHead>
+                                <TableHead className="w-[40px]">
+                                    <Checkbox
+                                        aria-label="Select all pending users shown"
+                                        checked={allPendingSelected}
+                                        disabled={pendingShown.length === 0}
+                                        onCheckedChange={(checked) => toggleAllPending(checked === true)}
+                                    />
+                                </TableHead>
                                 <TableHead className="w-[300px]">
                                     <Button
                                         variant="ghost"
@@ -378,7 +447,7 @@ export default function Index({ users }: Props) {
                         <TableBody>
                             {filteredAndSortedUsers.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="h-32 text-center">
+                                    <TableCell colSpan={7} className="h-32 text-center">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                             <Users className="h-8 w-8 opacity-50" />
                                             <p>No users found</p>
@@ -429,6 +498,12 @@ export default function Index({ users }: Props) {
                                                             Edit User
                                                         </Link>
                                                     </DropdownMenuItem>
+                                                    {canSignInAs(user) && (
+                                                        <DropdownMenuItem onClick={() => signInAs(user)} className="cursor-pointer">
+                                                            <LogIn className="mr-2 h-4 w-4" />
+                                                            Sign in as
+                                                        </DropdownMenuItem>
+                                                    )}
                                                     {!user.email_verified_at && (
                                                         <DropdownMenuItem
                                                             onClick={() => resendInvitation(user)}
@@ -459,6 +534,17 @@ export default function Index({ users }: Props) {
                                                     )}
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
+                                        </TableCell>
+                                        <TableCell onClick={(e) => e.stopPropagation()}>
+                                            {isPending(user) && (
+                                                <Checkbox
+                                                    aria-label={`Select ${user.email} to resend their invitation`}
+                                                    checked={selectedIds.includes(user.id)}
+                                                    onCheckedChange={(checked) =>
+                                                        setSelectedIds(current => checked === true ? [...current, user.id] : current.filter(id => id !== user.id))
+                                                    }
+                                                />
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-3">

@@ -5,6 +5,8 @@
 @source '../views';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 
+@import './theme-colors.css';
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {
@@ -14,15 +16,16 @@
         'Noto Color Emoji';
     --font-heading: 'Manrope', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
 
-    /* Sidra Core brand palette */
+    /* Sidra Core brand palette. Where a colour plays a role (text, surface, outline) it has a
+       dark-theme counterpart; gold and navy are the same in both. */
     --color-brand-ink: #0e1116;
     --color-brand-navy: #0f1e3d;
-    --color-brand-paper: #f7f7f4;
-    --color-brand-cream: #f6efdc;
-    --color-brand-line: #e5e1d6;
+    --color-brand-paper: light-dark(#f7f7f4, #1a2028);
+    --color-brand-cream: light-dark(#f6efdc, #2b2516);
+    --color-brand-line: light-dark(#e5e1d6, #262b33);
     --color-brand-gold: #c19c3a;
-    --color-brand-gold-dark: #8a6a22;
-    --color-brand-muted: #4a4f57;
+    --color-brand-gold-dark: light-dark(#8a6a22, #e0c98a);
+    --color-brand-muted: light-dark(#4a4f57, #9ca1a8);
 
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
@@ -73,6 +76,10 @@
 }
 
 :root {
+    /* Tells the browser which theme is on, so its own controls (scrollbars, date pickers,
+       autofill) match, and so light-dark() colours pick the right side */
+    color-scheme: light;
+
     --background: #f7f7f4;
     --foreground: #0e1116;
     --card: #ffffff;
@@ -103,12 +110,14 @@
     --sidebar-primary: #c19c3a;
     --sidebar-primary-foreground: #0e1116;
     --sidebar-accent: #f6efdc;
-    --sidebar-accent-foreground: #8a6a22;
+    --sidebar-accent-foreground: #7a5c1a;
     --sidebar-border: #e5e1d6;
     --sidebar-ring: #c19c3a;
 }
 
 .dark {
+    color-scheme: dark;
+
     --background: #0e1116;
     --foreground: #f7f7f4;
     --card: #151a21;
@@ -123,10 +132,11 @@
     --muted-foreground: #9ca1a8;
     --accent: #1c2129;
     --accent-foreground: #e0c98a;
-    --destructive: oklch(0.396 0.141 25.723);
-    --destructive-foreground: oklch(0.637 0.237 25.331);
+    --destructive: oklch(0.505 0.213 27.518);
+    --destructive-foreground: oklch(0.704 0.191 22.216);
     --border: #262b33;
-    --input: #262b33;
+    /* A little lighter than --border, so empty fields and tick boxes keep a visible outline */
+    --input: #343b45;
     --ring: #c19c3a;
     --chart-1: #c19c3a;
     --chart-2: #e0c98a;
@@ -168,10 +178,6 @@
     letter-spacing: 1.7px;
     line-height: 1.6;
     text-transform: uppercase;
-}
-
-.dark .eyebrow {
-    color: #e0c98a;
 }
 
 /* Custom Animations */

@@ -102,7 +102,7 @@ export default function Edit({ user, companies }: Props) {
                     </div>
                 </div>
 
-                <div className="bg-white shadow-sm border rounded-lg p-6">
+                <div className="bg-card shadow-sm border rounded-lg p-6">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">

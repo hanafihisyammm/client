@@ -9,6 +9,7 @@ use App\Models\Report;
 use App\Models\ReportComment;
 use App\Models\User;
 use App\Observers\AuditObserver;
+use App\Support\Impersonation;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
@@ -56,11 +57,32 @@ class AppServiceProvider extends ServiceProvider
         ReportComment::observe(AuditObserver::class);
         Company::observe(AuditObserver::class);
 
+        // Switching to another user and back with "Sign in as" is recorded by
+        // ImpersonationController, with the Super Admin as the one who did it
         Event::listen(function (Login $event) {
+            if (Impersonation::isActive()) {
+                return;
+            }
+
             AuditLog::record('auth.login', 'Logged in', 'user', $event->user->getAuthIdentifier(), $event->user->email, null, $event->user);
         });
 
         Event::listen(function (Logout $event) {
+            // Logging out while signed in as someone ends that, and is the Super Admin's doing
+            if ($event->user && ($superAdmin = Impersonation::impersonator())) {
+                AuditLog::record(
+                    'auth.impersonation_ended',
+                    "Logged out while signed in as {$event->user->name} ({$event->user->email})",
+                    'user',
+                    $event->user->getAuthIdentifier(),
+                    $event->user->email,
+                    null,
+                    $superAdmin
+                );
+
+                return;
+            }
+
             if ($event->user) {
                 AuditLog::record('auth.logout', 'Logged out', 'user', $event->user->getAuthIdentifier(), $event->user->email, null, $event->user);
             }

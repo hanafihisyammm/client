@@ -125,9 +125,9 @@ const priorityConfig = {
 
 const severityColors = {
   critical: 'bg-red-600 text-white',
-  major: 'bg-orange-500 text-white',
-  minor: 'bg-yellow-500 text-white',
-  trivial: 'bg-gray-400 text-white'
+  major: 'bg-orange-500 text-black',
+  minor: 'bg-yellow-500 text-black',
+  trivial: 'bg-gray-500 text-white'
 }
 
 type SortField = 'issue_key' | 'type' | 'title' | 'project' | 'status' | 'priority' | 'severity' | 'due_date' | 'assignee' | 'created_at'
@@ -369,7 +369,7 @@ export default function Dashboard() {
                 placeholder="Search issues..."
                 value={filters.search}
                 onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                className="pl-9 h-9 bg-white"
+                className="pl-9 h-9 bg-card"
               />
               {filters.search && (
                 <button
@@ -384,7 +384,7 @@ export default function Dashboard() {
             {/* Filter Dropdowns */}
             <div className="flex items-center gap-2">
               <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value, overdue: 'all' }))}>
-                <SelectTrigger className={`h-9 w-auto min-w-[120px] shrink-0 whitespace-nowrap text-sm ${filters.status !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                <SelectTrigger className={`h-9 w-auto min-w-[120px] shrink-0 whitespace-nowrap text-sm ${filters.status !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-card'}`}>
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -423,7 +423,7 @@ export default function Dashboard() {
               </Select>
 
               <Select value={filters.priority} onValueChange={(value) => setFilters(prev => ({ ...prev, priority: value }))}>
-                <SelectTrigger className={`h-9 w-auto min-w-[110px] shrink-0 whitespace-nowrap text-sm ${filters.priority !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                <SelectTrigger className={`h-9 w-auto min-w-[110px] shrink-0 whitespace-nowrap text-sm ${filters.priority !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-card'}`}>
                   <SelectValue placeholder="Priority" />
                 </SelectTrigger>
                 <SelectContent>
@@ -456,7 +456,7 @@ export default function Dashboard() {
               </Select>
 
               <Select value={filters.severity} onValueChange={(value) => setFilters(prev => ({ ...prev, severity: value }))}>
-                <SelectTrigger className={`h-9 w-auto min-w-[130px] shrink-0 whitespace-nowrap text-sm ${filters.severity !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                <SelectTrigger className={`h-9 w-auto min-w-[130px] shrink-0 whitespace-nowrap text-sm ${filters.severity !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-card'}`}>
                   <SelectValue placeholder="Severity" />
                 </SelectTrigger>
                 <SelectContent>
@@ -499,7 +499,7 @@ export default function Dashboard() {
                   label: project.name,
                   hint: project.status && project.status !== 'active' ? project.status : undefined,
                 }))}
-                className={`min-w-[130px] ${filters.project !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}
+                className={`min-w-[130px] ${filters.project !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-card'}`}
               />
 
               {/* Clear Filters */}
@@ -572,7 +572,7 @@ export default function Dashboard() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : filteredReports.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-xl border">
+          <div className="text-center py-16 bg-card rounded-xl border">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <FileText className="w-8 h-8 text-gray-400" />
             </div>
@@ -600,7 +600,7 @@ export default function Dashboard() {
             }}
           />
         ) : (
-          <div className="bg-white shadow-sm border rounded-xl overflow-hidden">
+          <div className="bg-card shadow-sm border rounded-xl overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50/50">

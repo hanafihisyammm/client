@@ -24,9 +24,12 @@ export default function Appearance() {
                 <div className="space-y-6">
                     <HeadingSmall
                         title="Appearance settings"
-                        description="Update your account's appearance settings"
+                        description="Choose how Sidra Desk looks. Your choice is saved to your account."
                     />
                     <AppearanceTabs />
+                    <p className="text-sm text-muted-foreground">
+                        System follows your computer or browser, and switches by itself when that changes.
+                    </p>
                 </div>
             </SettingsLayout>
         </AppLayout>
