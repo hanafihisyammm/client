@@ -13,16 +13,16 @@ class ReportViewController extends Controller
     public function create()
     {
         $user = Auth::user();
-        
+
         // Get available projects based on user role
-        if ($user->isClient()) {
-            // Clients can only see projects they're assigned to
+        if ($user->isClient() || $user->isDeveloper()) {
+            // Clients and developers can only see projects they're assigned to
             $projectIds = \DB::table('project_users')
                 ->where('user_id', $user->id)
                 ->pluck('project_id');
             $projects = Project::whereIn('id', $projectIds)->where('status', 'active')->select('id', 'name')->get();
-            
-            // If client has no projects assigned, prevent report creation
+
+            // If user has no projects assigned, prevent report creation
             if ($projects->isEmpty()) {
                 return Inertia::render('reports/no-projects', [
                     'userRole' => $user->role,
@@ -30,10 +30,10 @@ class ReportViewController extends Controller
                 ]);
             }
         } else {
-            // Admins and super admins can see all active projects
+            // Admins, super admins, and managers can see all active projects
             $projects = Project::where('status', 'active')->select('id', 'name')->get();
         }
-        
+
         return Inertia::render('reports/create', [
             'userRole' => $user->role,
             'userId' => $user->id,
@@ -44,12 +44,12 @@ class ReportViewController extends Controller
     public function show(Report $report)
     {
         $user = Auth::user();
-        
-        // Authorization check
-        if ($user->isClient()) {
+
+        // Authorization check for clients and developers
+        if ($user->isClient() || $user->isDeveloper()) {
             // Check if user can view this report
             $canView = false;
-            
+
             // User can view their own reports
             if ($report->reported_by === $user->id) {
                 $canView = true;
@@ -58,12 +58,12 @@ class ReportViewController extends Controller
                 $userProjectIds = \DB::table('project_users')
                     ->where('user_id', $user->id)
                     ->pluck('project_id');
-                
+
                 if ($userProjectIds->contains($report->project_id)) {
                     $canView = true;
                 }
             }
-            
+
             if (!$canView) {
                 abort(403, 'Unauthorized to view this report');
             }
@@ -94,10 +94,28 @@ class ReportViewController extends Controller
     public function history(Report $report)
     {
         $user = Auth::user();
-        
-        // Authorization check
-        if ($user->isClient() && $report->reported_by !== $user->id) {
-            abort(403, 'Unauthorized to view this report');
+
+        // Authorization check for clients and developers
+        if ($user->isClient() || $user->isDeveloper()) {
+            $canView = false;
+
+            // User can view their own reports
+            if ($report->reported_by === $user->id) {
+                $canView = true;
+            } else {
+                // User can view reports from projects they're assigned to
+                $userProjectIds = \DB::table('project_users')
+                    ->where('user_id', $user->id)
+                    ->pluck('project_id');
+
+                if ($userProjectIds->contains($report->project_id)) {
+                    $canView = true;
+                }
+            }
+
+            if (!$canView) {
+                abort(403, 'Unauthorized to view this report');
+            }
         }
         
         $report->load([

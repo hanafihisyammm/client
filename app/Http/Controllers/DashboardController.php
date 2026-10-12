@@ -16,8 +16,8 @@ class DashboardController extends Controller
         $query = Report::with(['reporter', 'assignee', 'project']);
 
         // Filter reports based on user role and project membership
-        if ($user->isClient()) {
-            // Clients can only see reports from projects they're assigned to
+        if ($user->isClient() || $user->isDeveloper()) {
+            // Clients and developers can only see reports from projects they're assigned to
             $userProjectIds = \DB::table('project_users')
                 ->where('user_id', $user->id)
                 ->pluck('project_id');
@@ -27,7 +27,7 @@ class DashboardController extends Controller
                   ->orWhereIn('project_id', $userProjectIds);
             });
         }
-        // Admin and super_admin can see all reports (no additional filtering)
+        // Admin, super_admin, and manager can see all reports (no additional filtering)
 
         // Apply search and filters
         if ($request->has('search') && $request->search) {
@@ -47,8 +47,8 @@ class DashboardController extends Controller
         }
 
         if ($request->has('project') && $request->project !== 'all') {
-            if ($user->isClient()) {
-                // Ensure client can only filter by their accessible projects
+            if ($user->isClient() || $user->isDeveloper()) {
+                // Ensure client/developer can only filter by their accessible projects
                 $userProjectIds = \DB::table('project_users')
                     ->where('user_id', $user->id)
                     ->pluck('project_id');
@@ -63,7 +63,7 @@ class DashboardController extends Controller
         $reports = $query->orderBy('created_at', 'desc')->get();
 
         // Get available projects for filtering
-        if ($user->isClient()) {
+        if ($user->isClient() || $user->isDeveloper()) {
             $projects = $user->projects()->where('projects.status', 'active')->select('projects.id', 'projects.name')->get();
         } else {
             $projects = Project::where('status', 'active')->select('id', 'name')->get();

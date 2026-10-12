@@ -20,30 +20,37 @@ class ProjectController extends Controller
     public function index()
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Only admin, super_admin, manager, and developer can access projects
+        if (!in_array($user->role, ['super_admin', 'admin', 'manager', 'developer'])) {
             abort(403, 'Unauthorized');
         }
-        
-        $projects = Project::with(['creator', 'users'])
+
+        $query = Project::with(['creator', 'users'])
             ->withCount([
                 'reports',
-                'reports as pending_reports_count' => function ($query) {
-                    $query->where('status', 'pending');
+                'reports as open_reports_count' => function ($query) {
+                    $query->whereIn('status', ['open', 'reopened']);
                 },
                 'reports as in_progress_reports_count' => function ($query) {
                     $query->where('status', 'in_progress');
                 },
-                'reports as approved_reports_count' => function ($query) {
-                    $query->where('status', 'approved');
+                'reports as resolved_reports_count' => function ($query) {
+                    $query->where('status', 'resolved');
                 },
                 'reports as closed_reports_count' => function ($query) {
                     $query->where('status', 'closed');
                 }
-            ])
-            ->orderBy('created_at', 'desc')
-            ->get();
+            ]);
+
+        // Developers can only see projects they're assigned to
+        if ($user->isDeveloper()) {
+            $query->whereHas('users', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            });
+        }
+
+        $projects = $query->orderBy('created_at', 'desc')->get();
 
         return Inertia::render('admin/projects/index', [
             'projects' => $projects,
@@ -56,15 +63,16 @@ class ProjectController extends Controller
     public function create()
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Only admin, super_admin, and manager can create projects
+        if (!$user->canManageProjects()) {
             abort(403, 'Unauthorized');
         }
-        
-        $clients = User::where('role', 'client')
+
+        // Get clients and developers for assignment
+        $clients = User::whereIn('role', ['client', 'developer'])
             ->orderBy('name')
-            ->get(['id', 'name', 'email']);
+            ->get(['id', 'name', 'email', 'role']);
 
         return Inertia::render('admin/projects/create', [
             'clients' => $clients,
@@ -77,9 +85,9 @@ class ProjectController extends Controller
     public function store(Request $request)
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Only admin, super_admin, and manager can create projects
+        if (!$user->canManageProjects()) {
             abort(403, 'Unauthorized');
         }
         
@@ -117,12 +125,17 @@ class ProjectController extends Controller
     public function show(Project $project)
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Check access based on role
+        if (!in_array($user->role, ['super_admin', 'admin', 'manager', 'developer'])) {
             abort(403, 'Unauthorized');
         }
-        
+
+        // Developers can only view projects they're assigned to
+        if ($user->isDeveloper() && !$project->users->contains('id', $user->id)) {
+            abort(403, 'Unauthorized');
+        }
+
         $project->load(['creator', 'users', 'reports.reporter', 'reports.attachments']);
 
         return Inertia::render('admin/projects/show', [
@@ -136,13 +149,19 @@ class ProjectController extends Controller
     public function showByUuid($uuid)
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Check access based on role
+        if (!in_array($user->role, ['super_admin', 'admin', 'manager', 'developer'])) {
             abort(403, 'Unauthorized');
         }
-        
+
         $project = Project::where('uuid', $uuid)->firstOrFail();
+
+        // Developers can only view projects they're assigned to
+        if ($user->isDeveloper() && !$project->users->contains('id', $user->id)) {
+            abort(403, 'Unauthorized');
+        }
+
         $project->load(['creator', 'users', 'reports.reporter', 'reports.attachments']);
 
         return Inertia::render('admin/projects/show', [
@@ -156,16 +175,17 @@ class ProjectController extends Controller
     public function edit(Project $project)
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Only admin, super_admin, and manager can edit projects
+        if (!$user->canManageProjects()) {
             abort(403, 'Unauthorized');
         }
-        
+
         $project->load(['users']);
-        $clients = User::where('role', 'client')
+        // Get clients and developers for assignment
+        $clients = User::whereIn('role', ['client', 'developer'])
             ->orderBy('name')
-            ->get(['id', 'name', 'email']);
+            ->get(['id', 'name', 'email', 'role']);
 
         return Inertia::render('admin/projects/edit', [
             'project' => $project,
@@ -179,17 +199,18 @@ class ProjectController extends Controller
     public function editByUuid($uuid)
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Only admin, super_admin, and manager can edit projects
+        if (!$user->canManageProjects()) {
             abort(403, 'Unauthorized');
         }
-        
+
         $project = Project::where('uuid', $uuid)->firstOrFail();
         $project->load(['users']);
-        $clients = User::where('role', 'client')
+        // Get clients and developers for assignment
+        $clients = User::whereIn('role', ['client', 'developer'])
             ->orderBy('name')
-            ->get(['id', 'name', 'email']);
+            ->get(['id', 'name', 'email', 'role']);
 
         return Inertia::render('admin/projects/edit', [
             'project' => $project,
@@ -203,9 +224,9 @@ class ProjectController extends Controller
     public function update(Request $request, Project $project)
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Only admin, super_admin, and manager can update projects
+        if (!$user->canManageProjects()) {
             abort(403, 'Unauthorized');
         }
         
@@ -270,9 +291,9 @@ class ProjectController extends Controller
     public function updateByUuid(Request $request, $uuid)
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Only admin, super_admin, and manager can update projects
+        if (!$user->canManageProjects()) {
             abort(403, 'Unauthorized');
         }
         
@@ -347,12 +368,12 @@ class ProjectController extends Controller
     public function destroy(Project $project)
     {
         $user = Auth::user();
-        
-        // Only admin and super_admin can manage projects
-        if (!$user->isAdmin() && $user->role !== 'super_admin') {
+
+        // Only admin and super_admin can delete projects
+        if (!$user->isAdmin()) {
             abort(403, 'Unauthorized');
         }
-        
+
         $project->delete();
 
         return redirect()->route('projects.index')
@@ -371,10 +392,10 @@ class ProjectController extends Controller
      */
     private function closeOpenReports(Project $project, User $user): int
     {
-        // Get all open reports (pending, submit_for_review, in_progress)
-        // but keep approved and closed reports unchanged
+        // Get all open reports (open, reopened, in_progress)
+        // but keep resolved and closed reports unchanged
         $openReports = Report::where('project_id', $project->id)
-            ->whereIn('status', ['pending', 'submit_for_review', 'in_progress'])
+            ->whereIn('status', ['open', 'reopened', 'in_progress'])
             ->get();
 
         if ($openReports->isEmpty()) {

@@ -167,10 +167,7 @@ export default function Create({ availableRoles }: Props) {
                             </Select>
                             <InputError message={errors.role} />
                             <p className="text-sm text-gray-600">
-                                {availableRoles.length === 1 
-                                    ? `As an admin, you can only create ${availableRoles[0].label} accounts.`
-                                    : "Choose the appropriate role for this user's access level"
-                                }
+                                Choose the appropriate role for this user's access level
                             </p>
                         </div>
 
@@ -191,17 +188,11 @@ export default function Create({ availableRoles }: Props) {
                     <h3 className="font-medium text-blue-900 mb-2">Role Permissions</h3>
                     <div className="text-sm text-blue-800 space-y-1">
                         <div><strong>Client:</strong> Can create and view their own reports</div>
-                        <div><strong>Admin:</strong> Can manage client users and all system functions</div>
+                        <div><strong>Developer:</strong> Can be assigned to reports and track time</div>
+                        <div><strong>Manager:</strong> Can manage projects and assign developers</div>
+                        <div><strong>Admin:</strong> Can manage users and all system functions</div>
                         <div><strong>Super Admin:</strong> Can manage all users including admin accounts</div>
                     </div>
-                    {availableRoles.length === 1 && (
-                        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                            <p className="text-sm text-yellow-800">
-                                <strong>Note:</strong> As an admin, you can only create client accounts. 
-                                Only super admins can create admin accounts.
-                            </p>
-                        </div>
-                    )}
                 </div>
             </div>
         </AppLayout>

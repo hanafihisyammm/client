@@ -1,36 +1,62 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Head, router, usePage } from '@inertiajs/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePicker } from '@/components/ui/date-picker'
-import { Upload, X, ArrowLeft } from 'lucide-react'
+import {
+  Upload, X, ArrowLeft, Bug, Sparkles, AlertTriangle, ArrowUpRight,
+  AlertCircle, Info, FileImage, File, Calendar, FolderKanban
+} from 'lucide-react'
 import AppLayout from '@/layouts/app-layout'
 
 interface Project {
   id: number
   name: string
+  prefix?: string
 }
 
 interface PageProps extends Record<string, unknown> {
-  userRole: 'client' | 'admin' | 'super_admin'
+  userRole: 'client' | 'admin' | 'super_admin' | 'manager' | 'developer'
   userId: number
   projects: Project[]
 }
 
+type IssueType = 'bug' | 'feature'
+
+const priorityOptions = [
+  { value: 'low', label: 'Low', icon: Info, color: 'text-blue-600', bg: 'bg-blue-50', description: 'Nice to have' },
+  { value: 'medium', label: 'Medium', icon: AlertCircle, color: 'text-yellow-600', bg: 'bg-yellow-50', description: 'Should be fixed soon' },
+  { value: 'high', label: 'High', icon: ArrowUpRight, color: 'text-orange-600', bg: 'bg-orange-50', description: 'Needs attention' },
+  { value: 'urgent', label: 'Urgent', icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', description: 'Critical, fix immediately' },
+]
+
+const severityOptions = [
+  { value: 'trivial', label: 'Trivial', description: 'Cosmetic issue, no impact on functionality' },
+  { value: 'minor', label: 'Minor', description: 'Minor issue with easy workaround' },
+  { value: 'major', label: 'Major', description: 'Major feature broken, limited workaround' },
+  { value: 'critical', label: 'Critical', description: 'System down or data loss' },
+]
+
 export default function CreateReport() {
   const { userRole, userId, projects } = usePage<PageProps>().props
+  const [issueType, setIssueType] = useState<IssueType>('bug')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [projectId, setProjectId] = useState<string>('')
   const [dueDate, setDueDate] = useState('')
   const [priority, setPriority] = useState('medium')
+  const [severity, setSeverity] = useState('minor')
   const [attachments, setAttachments] = useState<File[]>([])
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string[]>>({})
+  const [isDragging, setIsDragging] = useState(false)
+
+  const selectedProject = projects.find(p => p.id.toString() === projectId)
+  const selectedPriority = priorityOptions.find(p => p.value === priority)
+  const PriorityIcon = selectedPriority?.icon || AlertCircle
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,19 +64,18 @@ export default function CreateReport() {
     setErrors({})
 
     try {
-      // Validate required fields
       if (!title.trim()) {
         setErrors({ title: ['Title is required'] })
         setLoading(false)
         return
       }
-      
+
       if (!description.trim()) {
         setErrors({ description: ['Description is required'] })
         setLoading(false)
         return
       }
-      
+
       if (!projectId) {
         setErrors({ project_id: ['Project selection is required'] })
         setLoading(false)
@@ -62,30 +87,28 @@ export default function CreateReport() {
       submitData.append('description', description)
       submitData.append('project_id', projectId)
       submitData.append('priority', priority)
+      submitData.append('severity', severity)
       if (dueDate) {
         submitData.append('due_date', dueDate)
       }
-      
+
       attachments.forEach((file, index) => {
         submitData.append(`attachments[${index}]`, file)
       })
 
-      // Always fetch a fresh CSRF token to avoid expiration issues
       const tokenResponse = await fetch('/api/csrf-token', {
         credentials: 'same-origin'
       })
-      
+
       let csrfToken = ''
       if (tokenResponse.ok) {
         const tokenData = await tokenResponse.json()
         csrfToken = tokenData.token
-        // Update meta tag
         const metaTag = document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement
         if (metaTag) {
           metaTag.content = csrfToken
         }
       } else {
-        // Fallback to existing token if API fails
         csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
       }
 
@@ -114,7 +137,7 @@ export default function CreateReport() {
         if (data.errors) {
           setErrors(data.errors)
         } else {
-          setErrors({ general: [data.message || 'Failed to create report'] })
+          setErrors({ general: [data.message || 'Failed to create issue'] })
         }
       }
     } catch (error) {
@@ -126,12 +149,16 @@ export default function CreateReport() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
+    addFiles(files)
+  }
+
+  const addFiles = (files: File[]) => {
     if (attachments.length + files.length > 5) {
       setErrors({ attachments: ['You can only upload up to 5 files'] })
       return
     }
-    
-    const allowedFiles = files.filter(file => 
+
+    const allowedFiles = files.filter(file =>
       file.type.startsWith('image/') || file.type === 'application/pdf'
     )
     if (allowedFiles.length !== files.length) {
@@ -139,7 +166,6 @@ export default function CreateReport() {
       return
     }
 
-    // Check file size limit (5MB)
     const oversizedFiles = allowedFiles.filter(file => file.size > 5 * 1024 * 1024)
     if (oversizedFiles.length > 0) {
       setErrors({ attachments: ['Each file must be 5MB or smaller'] })
@@ -154,139 +180,193 @@ export default function CreateReport() {
     setAttachments(prev => prev.filter((_, i) => i !== index))
   }
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const files = Array.from(e.dataTransfer.files)
+    addFiles(files)
+  }, [attachments])
+
+  const getFileIcon = (file: File) => {
+    if (file.type === 'application/pdf') {
+      return <File className="w-5 h-5 text-red-500" />
+    }
+    return <FileImage className="w-5 h-5 text-blue-500" />
+  }
+
   return (
     <AppLayout>
-      <Head title="Create New Report" />
-      
-      <div className="space-y-6 px-4 py-6">
+      <Head title="Create Issue" />
+
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
             onClick={() => router.get('/dashboard')}
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
+            Back
           </Button>
-          
+
           <div className="flex-1">
-            <h1 className="text-2xl font-bold">Create New Report</h1>
-            <p className="text-muted-foreground">
-              Report an issue or request a new feature
+            <h1 className="text-2xl font-semibold tracking-tight">Create Issue</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Report a bug or request a new feature
             </p>
           </div>
         </div>
 
         {/* Main Content */}
-        <div className="max-w-4xl">
-          <Card className="p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Main Form */}
+          <div className="lg:col-span-2 space-y-6">
             <form onSubmit={handleSubmit} className="space-y-6">
               {errors.general && (
-                <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                   {errors.general.map((error, index) => (
                     <p key={index} className="text-red-600 text-sm">{error}</p>
                   ))}
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="title">Report Title *</Label>
-                <Input
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Brief summary of the issue or request"
-                  required
-                />
-                {errors.title && (
-                  <p className="text-red-600 text-sm">{errors.title[0]}</p>
-                )}
+              {/* Issue Type Selector */}
+              <div className="bg-white border rounded-xl p-6">
+                <Label className="text-sm font-medium text-gray-700 mb-3 block">Issue Type</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIssueType('bug')}
+                    className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      issueType === 'bug'
+                        ? 'border-red-500 bg-red-50'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className={`p-2 rounded-lg ${issueType === 'bug' ? 'bg-red-100' : 'bg-gray-100'}`}>
+                      <Bug className={`w-5 h-5 ${issueType === 'bug' ? 'text-red-600' : 'text-gray-500'}`} />
+                    </div>
+                    <div className="text-left">
+                      <p className={`font-medium ${issueType === 'bug' ? 'text-red-900' : 'text-gray-900'}`}>Bug</p>
+                      <p className="text-xs text-gray-500">Something isn't working</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIssueType('feature')}
+                    className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      issueType === 'feature'
+                        ? 'border-purple-500 bg-purple-50'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className={`p-2 rounded-lg ${issueType === 'feature' ? 'bg-purple-100' : 'bg-gray-100'}`}>
+                      <Sparkles className={`w-5 h-5 ${issueType === 'feature' ? 'text-purple-600' : 'text-gray-500'}`} />
+                    </div>
+                    <div className="text-left">
+                      <p className={`font-medium ${issueType === 'feature' ? 'text-purple-900' : 'text-gray-900'}`}>Feature</p>
+                      <p className="text-xs text-gray-500">New functionality request</p>
+                    </div>
+                  </button>
+                </div>
               </div>
 
-              {projects && projects.length > 0 && (
-                <div className="space-y-2">
-                  <Label htmlFor="project">Project *</Label>
-                  <Select value={projectId} onValueChange={setProjectId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id.toString()}>
-                          {project.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.project_id && (
-                    <p className="text-red-600 text-sm">{errors.project_id[0]}</p>
-                  )}
-                  <p className="text-sm text-gray-500">
-                    All reports must be assigned to a project.
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="description">What issue or requirement would you like to report? *</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Please describe the issue or requirement in detail. Include steps to reproduce if it's a bug, or specific requirements if it's a feature request."
-                  rows={8}
-                  className="resize-none"
-                  required
-                />
-                {errors.description && (
-                  <p className="text-red-600 text-sm">{errors.description[0]}</p>
+              {/* Project & Title */}
+              <div className="bg-white border rounded-xl p-6 space-y-4">
+                {projects && projects.length > 0 && (
+                  <div className="space-y-2">
+                    <Label htmlFor="project" className="text-sm font-medium text-gray-700">
+                      Project <span className="text-red-500">*</span>
+                    </Label>
+                    <Select value={projectId} onValueChange={setProjectId}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Select a project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id.toString()}>
+                            <div className="flex items-center gap-2">
+                              <FolderKanban className="w-4 h-4 text-gray-400" />
+                              {project.name}
+                              {project.prefix && (
+                                <span className="text-xs text-gray-400 font-mono">({project.prefix})</span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors.project_id && (
+                      <p className="text-red-600 text-sm">{errors.project_id[0]}</p>
+                    )}
+                  </div>
                 )}
-                <p className="text-sm text-gray-500">
-                  Be as detailed as possible to help our team understand and resolve your request quickly.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="priority">Priority *</Label>
-                  <Select value={priority} onValueChange={setPriority}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select priority" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.priority && (
-                    <p className="text-red-600 text-sm">{errors.priority[0]}</p>
-                  )}
-                </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="due_date">Due Date</Label>
-                  <DatePicker
-                    id="due_date"
-                    value={dueDate}
-                    onChange={setDueDate}
-                    placeholder="Select due date"
-                    className="w-full"
+                  <Label htmlFor="title" className="text-sm font-medium text-gray-700">
+                    Summary <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder={issueType === 'bug' ? "e.g., Login button not working on mobile" : "e.g., Add dark mode support"}
+                    className="h-11"
+                    required
                   />
-                  {errors.due_date && (
-                    <p className="text-red-600 text-sm">{errors.due_date[0]}</p>
+                  {errors.title && (
+                    <p className="text-red-600 text-sm">{errors.title[0]}</p>
                   )}
-                  <p className="text-sm text-gray-500">
-                    Optional: Set when this report should be resolved.
-                  </p>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <Label>Attachments (Optional)</Label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-gray-400 transition-colors">
+              {/* Description */}
+              <div className="bg-white border rounded-xl p-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="description" className="text-sm font-medium text-gray-700">
+                    Description <span className="text-red-500">*</span>
+                  </Label>
+                  <Textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder={issueType === 'bug'
+                      ? "Steps to reproduce:\n1. Go to...\n2. Click on...\n3. See error\n\nExpected behavior:\nWhat should happen\n\nActual behavior:\nWhat actually happens"
+                      : "Describe the feature you'd like:\n\nWhy is this needed:\n\nPossible solution:"}
+                    rows={10}
+                    className="resize-none font-mono text-sm"
+                    required
+                  />
+                  {errors.description && (
+                    <p className="text-red-600 text-sm">{errors.description[0]}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Attachments */}
+              <div className="bg-white border rounded-xl p-6 space-y-4">
+                <Label className="text-sm font-medium text-gray-700">Attachments</Label>
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`border-2 border-dashed rounded-xl p-8 transition-all ${
+                    isDragging
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
                   <input
                     type="file"
                     id="attachments"
@@ -299,43 +379,40 @@ export default function CreateReport() {
                     htmlFor="attachments"
                     className="flex flex-col items-center justify-center cursor-pointer"
                   >
-                    <Upload className="w-12 h-12 text-gray-400 mb-4" />
-                    <p className="text-lg text-gray-700 font-medium mb-2">
-                      Click to upload screenshots or images
+                    <div className={`p-3 rounded-full mb-3 ${isDragging ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                      <Upload className={`w-6 h-6 ${isDragging ? 'text-blue-600' : 'text-gray-400'}`} />
+                    </div>
+                    <p className="text-sm text-gray-700 font-medium mb-1">
+                      Drop files here or click to upload
                     </p>
-                    <p className="text-sm text-gray-500">
-                      PNG, JPG, PDF up to 5MB each (max 5 files)
+                    <p className="text-xs text-gray-500">
+                      PNG, JPG, GIF, PDF up to 5MB (max 5 files)
                     </p>
                   </label>
                 </div>
-                <p className="text-sm text-gray-500">
-                  Screenshots help us understand the issue better and resolve it faster.
-                </p>
 
                 {attachments.length > 0 && (
                   <div className="space-y-2">
-                    <Label>Selected Files:</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {attachments.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border">
-                          <div className="flex-1">
-                            <p className="text-sm font-medium truncate">{file.name}</p>
-                            <p className="text-xs text-gray-500">
-                              {(file.size / 1024 / 1024).toFixed(2)} MB
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeAttachment(index)}
-                            className="ml-2 text-red-600 hover:text-red-800"
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
+                    {attachments.map((file, index) => (
+                      <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+                        {getFileIcon(file)}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {(file.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
                         </div>
-                      ))}
-                    </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeAttachment(index)}
+                          className="text-gray-400 hover:text-red-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -343,25 +420,128 @@ export default function CreateReport() {
                   <p className="text-red-600 text-sm">{errors.attachments[0]}</p>
                 )}
               </div>
-
-              <div className="flex justify-end space-x-3 pt-6 border-t">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => router.get('/dashboard')}
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  type="submit" 
-                  disabled={loading || !title.trim() || !description.trim() || !projectId}
-                  className="min-w-[120px]"
-                >
-                  {loading ? 'Creating...' : 'Create Report'}
-                </Button>
-              </div>
             </form>
-          </Card>
+          </div>
+
+          {/* Right Column - Details */}
+          <div className="space-y-6">
+            {/* Priority & Severity */}
+            <div className="bg-white border rounded-xl p-6 space-y-5">
+              <h3 className="font-medium text-gray-900">Details</h3>
+
+              {/* Priority */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Priority</Label>
+                <Select value={priority} onValueChange={setPriority}>
+                  <SelectTrigger className="h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {priorityOptions.map((option) => {
+                      const Icon = option.icon
+                      return (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex items-center gap-2">
+                            <Icon className={`w-4 h-4 ${option.color}`} />
+                            <span>{option.label}</span>
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">{selectedPriority?.description}</p>
+              </div>
+
+              {/* Severity (only for bugs) */}
+              {issueType === 'bug' && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Severity</Label>
+                  <Select value={severity} onValueChange={setSeverity}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {severityOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500">
+                    {severityOptions.find(s => s.value === severity)?.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Due Date */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  Due Date
+                </Label>
+                <DatePicker
+                  value={dueDate}
+                  onChange={setDueDate}
+                  placeholder="Select date"
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-500">Optional deadline for this issue</p>
+              </div>
+            </div>
+
+            {/* Preview Card */}
+            {(title || selectedProject) && (
+              <div className="bg-white border rounded-xl p-6 space-y-4">
+                <h3 className="font-medium text-gray-900">Preview</h3>
+                <div className="p-4 bg-gray-50 rounded-lg border space-y-2">
+                  {selectedProject && (
+                    <p className="text-xs font-mono text-blue-600">
+                      {selectedProject.prefix || 'PROJ'}-???
+                    </p>
+                  )}
+                  <p className="font-medium text-gray-900">
+                    {title || 'Issue title...'}
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                      issueType === 'bug' ? 'bg-red-100 text-red-700' : 'bg-purple-100 text-purple-700'
+                    }`}>
+                      {issueType === 'bug' ? <Bug className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
+                      {issueType === 'bug' ? 'Bug' : 'Feature'}
+                    </span>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${selectedPriority?.bg} ${selectedPriority?.color}`}>
+                      <PriorityIcon className="w-3 h-3" />
+                      {selectedPriority?.label}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                      Open
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <div className="space-y-3">
+              <Button
+                onClick={handleSubmit}
+                disabled={loading || !title.trim() || !description.trim() || !projectId}
+                className="w-full h-11"
+              >
+                {loading ? 'Creating...' : 'Create Issue'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.get('/dashboard')}
+                className="w-full h-11"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </AppLayout>

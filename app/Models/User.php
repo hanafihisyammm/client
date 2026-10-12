@@ -84,10 +84,24 @@ class User extends Authenticatable
         return $this->role === 'client';
     }
 
-
     public function isAdmin(): bool
     {
         return in_array($this->role, ['admin', 'super_admin']);
+    }
+
+    public function isManager(): bool
+    {
+        return $this->role === 'manager';
+    }
+
+    public function isDeveloper(): bool
+    {
+        return $this->role === 'developer';
+    }
+
+    public function canManageProjects(): bool
+    {
+        return in_array($this->role, ['super_admin', 'admin', 'manager']);
     }
 
     public function projects(): BelongsToMany

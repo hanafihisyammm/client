@@ -5,21 +5,36 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Search, FileText, User as UserIcon, Calendar, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2 } from 'lucide-react'
+import {
+  Plus, Search, FileText, User as UserIcon, Calendar, ChevronUp, ChevronDown,
+  ChevronsUpDown, Eye, Edit, LayoutGrid, List, Clock, AlertTriangle,
+  ArrowUpRight, AlertCircle, Info, CheckCircle2, RotateCcw, X, Filter, SlidersHorizontal
+} from 'lucide-react'
 import AppLayout from '@/layouts/app-layout'
+import KanbanBoard from '@/components/kanban-board'
 import type { User } from '@/types'
+
+interface Label {
+  id: number
+  name: string
+  color: string
+}
 
 interface Report {
   id: number
   uuid: string
+  issue_key?: string
   title: string
   description: string
-  project: string | { id: number; name: string }
-  status: 'pending' | 'in_progress' | 'submit_for_review' | 'approved' | 'rejected'
+  project: string | { id: number; name: string; prefix?: string }
+  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'reopened'
   due_date?: string | null
   priority: 'low' | 'medium' | 'high' | 'urgent'
+  severity?: 'trivial' | 'minor' | 'major' | 'critical'
   reporter: { id: number; name: string; email: string }
   assignee?: { id: number; name: string; email: string }
+  labels?: Label[]
+  total_time_spent?: number
   attachments: Array<{
     id: number
     filename: string
@@ -31,48 +46,98 @@ interface Report {
 }
 
 interface Project {
-  id: number;
-  name: string;
+  id: number
+  name: string
+  prefix?: string
 }
 
 interface PageProps extends Record<string, unknown> {
   auth: {
-    user: User & { role: 'client' | 'admin' | 'super_admin' }
-  };
-  projects: Project[];
-  userRole: string;
+    user: User & { role: 'client' | 'admin' | 'super_admin' | 'manager' | 'developer' }
+  }
+  projects: Project[]
+  userRole: string
 }
 
-const statusColors = {
-  pending: 'bg-yellow-500',
-  in_progress: 'bg-blue-500',
-  submit_for_review: 'bg-purple-500',
-  approved: 'bg-green-500',
-  rejected: 'bg-red-500'
+// New status colors matching Jira
+const statusConfig = {
+  open: {
+    label: 'Open',
+    bg: 'bg-blue-100',
+    text: 'text-blue-800',
+    icon: AlertCircle,
+    dot: 'bg-blue-500'
+  },
+  in_progress: {
+    label: 'In Progress',
+    bg: 'bg-amber-100',
+    text: 'text-amber-800',
+    icon: Clock,
+    dot: 'bg-amber-500'
+  },
+  resolved: {
+    label: 'Resolved',
+    bg: 'bg-purple-100',
+    text: 'text-purple-800',
+    icon: CheckCircle2,
+    dot: 'bg-purple-500'
+  },
+  closed: {
+    label: 'Closed',
+    bg: 'bg-green-100',
+    text: 'text-green-800',
+    icon: CheckCircle2,
+    dot: 'bg-green-500'
+  },
+  reopened: {
+    label: 'Reopened',
+    bg: 'bg-red-100',
+    text: 'text-red-800',
+    icon: RotateCcw,
+    dot: 'bg-red-500'
+  },
 }
 
+const priorityConfig = {
+  urgent: { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-100', label: 'Urgent' },
+  high: { icon: ArrowUpRight, color: 'text-orange-600', bg: 'bg-orange-100', label: 'High' },
+  medium: { icon: AlertCircle, color: 'text-yellow-600', bg: 'bg-yellow-100', label: 'Medium' },
+  low: { icon: Info, color: 'text-blue-600', bg: 'bg-blue-100', label: 'Low' },
+}
 
-type SortField = 'title' | 'project' | 'status' | 'priority' | 'due_date' | 'reporter' | 'created_at'
+const severityColors = {
+  critical: 'bg-red-600 text-white',
+  major: 'bg-orange-500 text-white',
+  minor: 'bg-yellow-500 text-white',
+  trivial: 'bg-gray-400 text-white'
+}
+
+type SortField = 'issue_key' | 'title' | 'project' | 'status' | 'priority' | 'severity' | 'due_date' | 'assignee' | 'created_at'
 type SortOrder = 'asc' | 'desc'
+type ViewMode = 'list' | 'board'
 
 export default function Dashboard() {
   const { auth, projects, userRole } = usePage<PageProps>().props
   const [allReports, setAllReports] = useState<Report[]>([])
   const [filteredReports, setFilteredReports] = useState<Report[]>([])
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>('board')
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
   const [filters, setFilters] = useState({
     status: 'all',
     priority: 'all',
+    severity: 'all',
     project: 'all',
+    assignee: 'all',
     search: ''
   })
+
   const fetchReports = async (currentFilters = filters) => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      
+
       Object.entries(currentFilters).forEach(([key, value]) => {
         if (value && value !== 'all') {
           params.append(key, value)
@@ -97,6 +162,10 @@ export default function Dashboard() {
       let bValue: any
 
       switch (field) {
+        case 'issue_key':
+          aValue = a.issue_key || ''
+          bValue = b.issue_key || ''
+          break
         case 'title':
           aValue = a.title?.toLowerCase() || ''
           bValue = b.title?.toLowerCase() || ''
@@ -106,21 +175,27 @@ export default function Dashboard() {
           bValue = typeof b.project === 'object' ? b.project?.name?.toLowerCase() || '' : b.project?.toLowerCase() || ''
           break
         case 'status':
-          aValue = a.status
-          bValue = b.status
+          const statusOrder = { 'open': 1, 'reopened': 2, 'in_progress': 3, 'resolved': 4, 'closed': 5 }
+          aValue = statusOrder[a.status] || 0
+          bValue = statusOrder[b.status] || 0
           break
         case 'priority':
           const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 }
           aValue = priorityOrder[a.priority] || 0
           bValue = priorityOrder[b.priority] || 0
           break
+        case 'severity':
+          const severityOrder = { 'critical': 4, 'major': 3, 'minor': 2, 'trivial': 1 }
+          aValue = severityOrder[a.severity || 'minor'] || 0
+          bValue = severityOrder[b.severity || 'minor'] || 0
+          break
         case 'due_date':
           aValue = a.due_date ? new Date(a.due_date).getTime() : 0
           bValue = b.due_date ? new Date(b.due_date).getTime() : 0
           break
-        case 'reporter':
-          aValue = a.reporter?.name?.toLowerCase() || ''
-          bValue = b.reporter?.name?.toLowerCase() || ''
+        case 'assignee':
+          aValue = a.assignee?.name?.toLowerCase() || ''
+          bValue = b.assignee?.name?.toLowerCase() || ''
           break
         case 'created_at':
           aValue = new Date(a.created_at).getTime()
@@ -145,11 +220,11 @@ export default function Dashboard() {
 
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) {
-      return <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+      return <ChevronsUpDown className="ml-1 h-3 w-3 opacity-50" />
     }
-    return sortOrder === 'asc' ? 
-      <ChevronUp className="ml-2 h-4 w-4" /> : 
-      <ChevronDown className="ml-2 h-4 w-4" />
+    return sortOrder === 'asc' ?
+      <ChevronUp className="ml-1 h-3 w-3" /> :
+      <ChevronDown className="ml-1 h-3 w-3" />
   }
 
   useEffect(() => {
@@ -160,160 +235,357 @@ export default function Dashboard() {
     fetchReports(filters)
   }, [filters])
 
-  // Re-sort when sort field or order changes
   useEffect(() => {
     if (allReports.length > 0) {
       setFilteredReports(sortReports(allReports, sortField, sortOrder))
     }
   }, [sortField, sortOrder, allReports])
 
-
-
-  const formatStatus = (status: string) => {
-    return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  // Calculate stats
+  const stats = {
+    open: allReports.filter(r => r.status === 'open' || r.status === 'reopened').length,
+    inProgress: allReports.filter(r => r.status === 'in_progress').length,
+    resolved: allReports.filter(r => r.status === 'resolved').length,
+    closed: allReports.filter(r => r.status === 'closed').length,
   }
 
   return (
     <AppLayout>
       <Head title="Dashboard" />
-      
-      
-      <div className="space-y-6 px-4 py-2">
+
+      <div className="space-y-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Dashboard</h1>
-            <p className="text-muted-foreground mt-1">
-              Manage your issues and requirements
+            <h1 className="text-2xl font-semibold tracking-tight">Issues</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Track and manage issues across all projects
             </p>
           </div>
-          
-          {(() => {
-            // Show Create Report button for admins and super_admins always
-            if (userRole === 'admin' || userRole === 'super_admin') {
-              return (
-                <Button onClick={() => router.get('/reports/create')}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Report
-                </Button>
-              );
-            }
-            
-            // For clients, only show if they have assigned projects
-            if (userRole === 'client' && projects.length > 0) {
-              return (
-                <Button onClick={() => router.get('/reports/create')}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Report
-                </Button>
-              );
-            }
-            
-            // For clients with no projects, show a disabled button with tooltip
-            if (userRole === 'client' && projects.length === 0) {
-              return (
-                <Button 
-                  disabled 
-                  title="You must be assigned to a project before creating reports"
+
+          <div className="flex items-center gap-3">
+            {/* View Toggle */}
+            <div className="flex items-center bg-muted rounded-lg p-1">
+              <Button
+                variant={viewMode === 'board' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 px-3"
+                onClick={() => setViewMode('board')}
+              >
+                <LayoutGrid className="w-4 h-4 mr-1" />
+                Board
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 px-3"
+                onClick={() => setViewMode('list')}
+              >
+                <List className="w-4 h-4 mr-1" />
+                List
+              </Button>
+            </div>
+
+            {/* Create Button */}
+            {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'manager' ||
+              (userRole === 'client' && projects.length > 0) ||
+              (userRole === 'developer' && projects.length > 0)) && (
+              <Button onClick={() => router.get('/reports/create')} className="shadow-sm">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Issue
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border p-4 flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-blue-50">
+              <AlertCircle className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{stats.open}</p>
+              <p className="text-sm text-muted-foreground">Open</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border p-4 flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-amber-50">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{stats.inProgress}</p>
+              <p className="text-sm text-muted-foreground">In Progress</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border p-4 flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-purple-50">
+              <CheckCircle2 className="w-5 h-5 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{stats.resolved}</p>
+              <p className="text-sm text-muted-foreground">Resolved</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border p-4 flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-green-50">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{stats.closed}</p>
+              <p className="text-sm text-muted-foreground">Closed</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="space-y-3">
+          {/* Search and Filter Controls */}
+          <div className="flex items-center gap-3">
+            {/* Search */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search issues..."
+                value={filters.search}
+                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                className="pl-9 h-9 bg-white"
+              />
+              {filters.search && (
+                <button
+                  onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Report
-                </Button>
-              );
-            }
-            
-            return null;
-          })()}
-        </div>
+                  <X className="w-3 h-3 text-gray-400" />
+                </button>
+              )}
+            </div>
 
-        <div className="flex flex-wrap gap-4">
-          <div className="flex items-center space-x-2">
-            <Search className="w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search reports..."
-              value={filters.search}
-              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-              className="w-64"
-            />
-          </div>
-          
-          <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="submit_for_review">Submit for Review</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-            </SelectContent>
-          </Select>
+            {/* Filter Dropdowns */}
+            <div className="flex items-center gap-2">
+              <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+                <SelectTrigger className={`h-9 min-w-[120px] text-sm ${filters.status !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="open">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      Open
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="in_progress">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      In Progress
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="resolved">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-purple-500" />
+                      Resolved
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="closed">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-green-500" />
+                      Closed
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="reopened">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500" />
+                      Reopened
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
 
+              <Select value={filters.priority} onValueChange={(value) => setFilters(prev => ({ ...prev, priority: value }))}>
+                <SelectTrigger className={`h-9 min-w-[110px] text-sm ${filters.priority !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Priority</SelectItem>
+                  <SelectItem value="urgent">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                      Urgent
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="high">
+                    <div className="flex items-center gap-2">
+                      <ArrowUpRight className="w-3.5 h-3.5 text-orange-600" />
+                      High
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="medium">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-3.5 h-3.5 text-yellow-600" />
+                      Medium
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="low">
+                    <div className="flex items-center gap-2">
+                      <Info className="w-3.5 h-3.5 text-blue-600" />
+                      Low
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
 
-          <Select value={filters.project} onValueChange={(value) => setFilters(prev => ({ ...prev, project: value }))}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Project" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Projects</SelectItem>
-              {projects.map(project => (
-                <SelectItem key={project.id} value={project.id.toString()}>{project.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+              <Select value={filters.severity} onValueChange={(value) => setFilters(prev => ({ ...prev, severity: value }))}>
+                <SelectTrigger className={`h-9 w-[130px] text-sm ${filters.severity !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                  <SelectValue placeholder="Severity" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Severity</SelectItem>
+                  <SelectItem value="critical">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-600" />
+                      Critical
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="major">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-orange-500" />
+                      Major
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="minor">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                      Minor
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="trivial">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-gray-400" />
+                      Trivial
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        ) : filteredReports.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="max-w-sm mx-auto">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FileText className="w-8 h-8 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No reports yet</h3>
-              <p className="text-gray-600 mb-6">Get started by creating your first report.</p>
-              {auth.user.role === 'client' && (
-                <Button onClick={() => router.get('/reports/create')} className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Your First Report
+              <Select value={filters.project} onValueChange={(value) => setFilters(prev => ({ ...prev, project: value }))}>
+                <SelectTrigger className={`h-9 min-w-[130px] text-sm ${filters.project !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-white'}`}>
+                  <SelectValue placeholder="Project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Projects</SelectItem>
+                  {projects.map(project => (
+                    <SelectItem key={project.id} value={project.id.toString()}>{project.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Clear Filters */}
+              {(filters.status !== 'all' || filters.priority !== 'all' || filters.severity !== 'all' || filters.project !== 'all' || filters.search) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFilters({ status: 'all', priority: 'all', severity: 'all', project: 'all', assignee: 'all', search: '' })}
+                  className="h-9 px-3 text-gray-500 hover:text-gray-700"
+                >
+                  <X className="w-3.5 h-3.5 mr-1" />
+                  Clear
                 </Button>
               )}
             </div>
           </div>
+
+          {/* Active Filters Display */}
+          {(filters.status !== 'all' || filters.priority !== 'all' || filters.severity !== 'all' || filters.project !== 'all') && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-gray-500">Active filters:</span>
+              {filters.status !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                  <span className={`w-1.5 h-1.5 rounded-full ${statusConfig[filters.status as keyof typeof statusConfig]?.dot}`} />
+                  {statusConfig[filters.status as keyof typeof statusConfig]?.label}
+                  <button onClick={() => setFilters(prev => ({ ...prev, status: 'all' }))} className="ml-0.5 hover:bg-blue-200 rounded-full p-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {filters.priority !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                  {priorityConfig[filters.priority as keyof typeof priorityConfig]?.label}
+                  <button onClick={() => setFilters(prev => ({ ...prev, priority: 'all' }))} className="ml-0.5 hover:bg-orange-200 rounded-full p-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {filters.severity !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                  {filters.severity.charAt(0).toUpperCase() + filters.severity.slice(1)}
+                  <button onClick={() => setFilters(prev => ({ ...prev, severity: 'all' }))} className="ml-0.5 hover:bg-purple-200 rounded-full p-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {filters.project !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                  {projects.find(p => p.id.toString() === filters.project)?.name}
+                  <button onClick={() => setFilters(prev => ({ ...prev, project: 'all' }))} className="ml-0.5 hover:bg-green-200 rounded-full p-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        ) : filteredReports.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-xl border">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No issues found</h3>
+            <p className="text-gray-600 mb-6">Get started by creating your first issue.</p>
+            {(userRole !== 'client' || projects.length > 0) && (
+              <Button onClick={() => router.get('/reports/create')}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Issue
+              </Button>
+            )}
+          </div>
+        ) : viewMode === 'board' ? (
+          <KanbanBoard reports={filteredReports} />
         ) : (
-          <div className="bg-white shadow-sm border rounded-lg">
+          <div className="bg-white shadow-sm border rounded-xl overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24">Actions</TableHead>
+                <TableRow className="bg-slate-50/50">
+                  <TableHead className="w-28">
+                    <Button
+                      variant="ghost"
+                      className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
+                      onClick={() => handleSort('issue_key')}
+                    >
+                      Key
+                      {getSortIcon('issue_key')}
+                    </Button>
+                  </TableHead>
                   <TableHead>
-                    <Button 
-                      variant="ghost" 
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
+                    <Button
+                      variant="ghost"
+                      className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
                       onClick={() => handleSort('title')}
                     >
-                      Title
+                      Summary
                       {getSortIcon('title')}
                     </Button>
                   </TableHead>
                   <TableHead>
-                    <Button 
-                      variant="ghost" 
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
-                      onClick={() => handleSort('project')}
-                    >
-                      Project
-                      {getSortIcon('project')}
-                    </Button>
-                  </TableHead>
-                  <TableHead>
-                    <Button 
-                      variant="ghost" 
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
+                    <Button
+                      variant="ghost"
+                      className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
                       onClick={() => handleSort('status')}
                     >
                       Status
@@ -321,9 +593,9 @@ export default function Dashboard() {
                     </Button>
                   </TableHead>
                   <TableHead>
-                    <Button 
-                      variant="ghost" 
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
+                    <Button
+                      variant="ghost"
+                      className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
                       onClick={() => handleSort('priority')}
                     >
                       Priority
@@ -331,9 +603,19 @@ export default function Dashboard() {
                     </Button>
                   </TableHead>
                   <TableHead>
-                    <Button 
-                      variant="ghost" 
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
+                    <Button
+                      variant="ghost"
+                      className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
+                      onClick={() => handleSort('assignee')}
+                    >
+                      Assignee
+                      {getSortIcon('assignee')}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button
+                      variant="ghost"
+                      className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
                       onClick={() => handleSort('due_date')}
                     >
                       Due Date
@@ -341,20 +623,9 @@ export default function Dashboard() {
                     </Button>
                   </TableHead>
                   <TableHead>
-                    <Button 
-                      variant="ghost" 
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
-                      onClick={() => handleSort('reporter')}
-                    >
-                      Reporter
-                      {getSortIcon('reporter')}
-                    </Button>
-                  </TableHead>
-                  <TableHead>Attachments</TableHead>
-                  <TableHead>
-                    <Button 
-                      variant="ghost" 
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
+                    <Button
+                      variant="ghost"
+                      className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
                       onClick={() => handleSort('created_at')}
                     >
                       Created
@@ -364,123 +635,70 @@ export default function Dashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredReports.map((report) => (
-                  <TableRow 
-                    key={`report-${report.id}-${report.uuid}`}
-                    className="hover:bg-gray-50"
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            router.get(`/reports/${report.uuid}`)
-                          }}
-                          title="View report"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {(userRole === 'admin' || userRole === 'super_admin' || 
-                          (userRole === 'client' && report.reporter?.id === auth.user.id)) && (
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              router.get(`/reports/${report.uuid}`)
-                            }}
-                            title="Edit report"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell 
-                      className="font-medium cursor-pointer" 
+                {filteredReports.map((report) => {
+                  const status = statusConfig[report.status]
+                  const priority = priorityConfig[report.priority]
+                  const PriorityIcon = priority?.icon || Info
+                  const isOverdue = report.due_date && new Date(report.due_date) < new Date() && report.status !== 'closed'
+
+                  return (
+                    <TableRow
+                      key={`report-${report.id}-${report.uuid}`}
+                      className="hover:bg-slate-50/50 cursor-pointer transition-colors"
                       onClick={() => router.get(`/reports/${report.uuid}`)}
                     >
-                      <div className="max-w-xs">
-                        <div className="truncate font-medium text-gray-900">
-                          {String(report.title || `Report #${report.id}`)}
-                        </div>
-                        <div className="text-sm text-gray-500 truncate">
-                          {String(report.description || '')}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell 
-                      className="text-sm text-gray-600 cursor-pointer"
-                      onClick={() => router.get(`/reports/${report.uuid}`)}
-                    >
-                      {typeof report.project === 'object' ? (report.project?.name || '-') : (report.project || '-')}
-                    </TableCell>
-                    <TableCell 
-                      className="cursor-pointer"
-                      onClick={() => router.get(`/reports/${report.uuid}`)}
-                    >
-                      <Badge className={`${statusColors[report.status]} text-white text-xs`}>
-                        {formatStatus(report.status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell 
-                      className="cursor-pointer"
-                      onClick={() => router.get(`/reports/${report.uuid}`)}
-                    >
-                      <Badge className={`text-xs ${
-                        report.priority === 'urgent' ? 'bg-red-100 text-red-800' :
-                        report.priority === 'high' ? 'bg-orange-100 text-orange-800' :
-                        report.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
-                        {report.priority?.charAt(0).toUpperCase() + report.priority?.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell 
-                      className="text-sm text-gray-600 cursor-pointer"
-                      onClick={() => router.get(`/reports/${report.uuid}`)}
-                    >
-                      {report.due_date ? new Date(report.due_date).toLocaleDateString() : '-'}
-                    </TableCell>
-                    <TableCell 
-                      className="cursor-pointer"
-                      onClick={() => router.get(`/reports/${report.uuid}`)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <UserIcon className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">{report.reporter?.name || 'Unknown'}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell 
-                      className="text-center cursor-pointer"
-                      onClick={() => router.get(`/reports/${report.uuid}`)}
-                    >
-                      {report.attachments && report.attachments.length > 0 ? (
-                        <div className="flex items-center justify-center">
-                          <FileText className="w-4 h-4 text-gray-400" />
-                          <span className="ml-1 text-sm text-gray-600">
-                            {report.attachments.length}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-400">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell 
-                      className="cursor-pointer"
-                      onClick={() => router.get(`/reports/${report.uuid}`)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600">
-                          {new Date(report.created_at).toLocaleDateString()}
+                      <TableCell>
+                        <span className="font-mono text-sm text-blue-600 hover:underline">
+                          {report.issue_key || `#${report.id}`}
                         </span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell>
+                        <div className="max-w-md">
+                          <p className="font-medium text-gray-900 truncate">{report.title}</p>
+                          <p className="text-sm text-gray-500 truncate">{report.description}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status?.bg} ${status?.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${status?.dot}`} />
+                          {status?.label}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <PriorityIcon className={`w-4 h-4 ${priority?.color}`} />
+                          <span className="text-sm text-gray-600">{priority?.label}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {report.assignee ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium">
+                              {report.assignee.name.charAt(0)}
+                            </div>
+                            <span className="text-sm text-gray-600">{report.assignee.name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">Unassigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {report.due_date ? (
+                          <span className={`text-sm ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
+                            {new Date(report.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-gray-500">
+                          {new Date(report.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>

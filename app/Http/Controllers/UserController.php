@@ -40,10 +40,14 @@ class UserController extends Controller
         if ($currentUser->role === 'super_admin') {
             $availableRoles = [
                 ['value' => 'admin', 'label' => 'Admin'],
+                ['value' => 'manager', 'label' => 'Manager'],
+                ['value' => 'developer', 'label' => 'Developer'],
                 ['value' => 'client', 'label' => 'Client']
             ];
         } else if ($currentUser->role === 'admin') {
             $availableRoles = [
+                ['value' => 'manager', 'label' => 'Manager'],
+                ['value' => 'developer', 'label' => 'Developer'],
                 ['value' => 'client', 'label' => 'Client']
             ];
         }
@@ -65,7 +69,7 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
-            'role' => 'required|string|in:admin,client',
+            'role' => 'required|string|in:admin,manager,developer,client',
         ], [
             'name.required' => 'Please enter a full name.',
             'email.required' => 'Please enter an email address.',
@@ -74,7 +78,7 @@ class UserController extends Controller
             'password.required' => 'Please enter a password.',
             'password.confirmed' => 'Password confirmation does not match.',
             'role.required' => 'Please select a user role.',
-            'role.in' => 'Please select a valid role (Admin or Client).',
+            'role.in' => 'Please select a valid role.',
         ]);
 
         // Check if the current user can create a user with the requested role
@@ -143,7 +147,7 @@ class UserController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
-            'role' => 'required|string|in:admin,client',
+            'role' => 'required|string|in:admin,manager,developer,client',
             'password' => ['nullable', 'confirmed', Rules\Password::defaults()],
         ]);
 

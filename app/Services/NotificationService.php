@@ -137,6 +137,20 @@ class NotificationService
     }
 
     /**
+     * Notify a user when they are assigned to a report.
+     */
+    public function notifyReportAssigned(Report $report, User $assignedBy, User $assignee): void
+    {
+        // Don't notify if assigning to self
+        if ($assignedBy->id === $assignee->id) {
+            return;
+        }
+
+        // For now, just create a simple database notification
+        $assignee->notify(new \App\Notifications\ReportAssigned($report, $assignedBy));
+    }
+
+    /**
      * Get recipients for comment notifications.
      * - If admin comments: notify the report owner (if client) and other project members
      * - If client comments: notify all admins, super admins, and assigned admin (if any)
