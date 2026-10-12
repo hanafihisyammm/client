@@ -23,7 +23,7 @@ interface Project {
 }
 
 interface PageProps extends Record<string, unknown> {
-  userRole: 'client' | 'admin' | 'super_admin' | 'manager' | 'developer'
+  userRole: 'admin' | 'super_admin' | 'manager' | 'staff'
   userId: number
   projects: Project[]
 }
@@ -93,7 +93,11 @@ export default function CreateReport() {
       submitData.append('description', description)
       submitData.append('project_id', projectId)
       submitData.append('priority', priority)
-      submitData.append('severity', severity)
+      submitData.append('type', issueType)
+      // Severity only describes bugs; a feature request is saved without one
+      if (issueType === 'bug') {
+        submitData.append('severity', severity)
+      }
       if (dueDate) {
         submitData.append('due_date', dueDate)
       }

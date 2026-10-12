@@ -15,18 +15,8 @@ class DashboardController extends Controller
         $user = Auth::user();
         $query = Report::with(['reporter', 'assignee', 'project']);
 
-        // Filter reports based on user role and project membership
-        if ($user->isClient() || $user->isDeveloper()) {
-            // Clients and developers can only see reports from projects they're assigned to
-            $userProjectIds = \DB::table('project_users')
-                ->where('user_id', $user->id)
-                ->pluck('project_id');
-            $query->where(function($q) use ($user, $userProjectIds) {
-                // Reports they created OR reports from their projects
-                $q->where('reported_by', $user->id)
-                  ->orWhereIn('project_id', $userProjectIds);
-            });
-        }
+        // Managers see their company's issues; staff the ones in their projects, or that they raised or are assigned to
+        $query->visibleTo($user);
         // Admin, super_admin, and manager can see all reports (no additional filtering)
 
         // KPI counts cover every report the user can see, regardless of the filters below
@@ -50,28 +40,17 @@ class DashboardController extends Controller
         }
 
         if ($request->has('project') && $request->project !== 'all') {
-            if ($user->isClient() || $user->isDeveloper()) {
-                // Ensure client/developer can only filter by their accessible projects
-                $userProjectIds = \DB::table('project_users')
-                    ->where('user_id', $user->id)
-                    ->pluck('project_id');
-                if (in_array($request->project, $userProjectIds->toArray())) {
-                    $query->where('project_id', $request->project);
-                }
-            } else {
-                $query->where('project_id', $request->project);
-            }
+            $query->where('project_id', $request->project);
         }
 
         $reports = $query->orderBy('created_at', 'desc')->get();
 
         // Every project the user can see, so issues in inactive or completed projects can still be
         // filtered. The page uses the status to decide whether new issues can be created.
-        if ($user->isClient() || $user->isDeveloper()) {
-            $projects = $user->projects()->select('projects.id', 'projects.name', 'projects.status')->orderBy('projects.name')->get();
-        } else {
-            $projects = Project::select('id', 'name', 'status')->orderBy('name')->get();
-        }
+        $projects = Project::visibleTo($user)
+            ->select('projects.id', 'projects.name', 'projects.status')
+            ->orderBy('projects.name')
+            ->get();
 
         return Inertia::render('dashboard', [
             'reports' => $reports,
@@ -102,11 +81,7 @@ class DashboardController extends Controller
             ->groupBy('status')
             ->pluck('total', 'status');
 
-        $overdue = (clone $query)
-            ->whereNotNull('due_date')
-            ->whereDate('due_date', '<', now()->toDateString())
-            ->whereNotIn('status', Report::FINISHED_STATUSES)
-            ->count();
+        $overdue = (clone $query)->overdue()->count();
 
         return [
             'open' => (int) ($byStatus[Report::STATUS_OPEN] ?? 0),

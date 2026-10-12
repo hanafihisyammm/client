@@ -13,7 +13,7 @@ import {
 import { dashboard } from '@/routes';
 import { type NavItem, type SharedData, type User } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { FileText, Users, FolderKanban, ScrollText } from 'lucide-react';
+import { Building2, FileText, FolderKanban, ScrollText, Users } from 'lucide-react';
 import AppLogo from './app-logo';
 
 // Base navigation items available to all users
@@ -25,12 +25,12 @@ const baseNavItems: NavItem[] = [
     },
 ];
 
-// Admin-only navigation items
+// Admins work across every client company
 const adminNavItems: NavItem[] = [
     {
-        title: 'User Management',
-        href: '/users',
-        icon: Users,
+        title: 'Clients',
+        href: '/clients',
+        icon: Building2,
     },
     {
         title: 'Projects',
@@ -38,9 +38,37 @@ const adminNavItems: NavItem[] = [
         icon: FolderKanban,
     },
     {
+        title: 'User Management',
+        href: '/users',
+        icon: Users,
+    },
+    {
         title: 'Audit Log',
         href: '/audit-logs',
         icon: ScrollText,
+    },
+];
+
+// A manager only ever sees their own company
+const managerNavItems: NavItem[] = [
+    {
+        title: 'Projects',
+        href: '/projects',
+        icon: FolderKanban,
+    },
+    {
+        title: 'My Company',
+        href: '/my-company',
+        icon: Building2,
+    },
+];
+
+// Staff see the projects they are assigned to
+const staffNavItems: NavItem[] = [
+    {
+        title: 'My Projects',
+        href: '/projects',
+        icon: FolderKanban,
     },
 ];
 
@@ -54,6 +82,16 @@ export function AppSidebar() {
     const mainNavItems = [...baseNavItems];
     if (user.role === 'admin' || user.role === 'super_admin') {
         mainNavItems.push(...adminNavItems);
+    } else if (user.role === 'manager') {
+        // Link straight to the manager's own company page when they have one
+        const company = (user as { company?: { uuid: string } | null }).company;
+        mainNavItems.push(
+            ...managerNavItems.map((item) =>
+                item.title === 'My Company' && company ? { ...item, href: `/clients/${company.uuid}` } : item,
+            ),
+        );
+    } else {
+        mainNavItems.push(...staffNavItems);
     }
 
     return (

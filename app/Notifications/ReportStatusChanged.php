@@ -49,8 +49,8 @@ class ReportStatusChanged extends AppNotification
     }
 
     /**
-     * Wording for this recipient. Resolved means "waiting for the client to review",
-     * so clients are asked to confirm the fix while the team is told it is with the client.
+     * Wording for this recipient. Resolved means "waiting for review": the reporter and the
+     * manager are asked to confirm the fix, everyone else is told it is waiting for them.
      *
      * @return array{subject: string, title: string, heading: string, intro: string, message: string, action: string, outro: array<int, string>}
      */
@@ -58,10 +58,11 @@ class ReportStatusChanged extends AppNotification
     {
         $title = $this->report->title;
         $actor = $this->updatedBy->name;
-        $toClient = $notifiable instanceof User && $notifiable->isClient();
-        $byClient = $this->updatedBy->isClient();
+        // The reporter and the company's manager are the ones who confirm or reject a fix
+        $canConfirm = $notifiable instanceof User && $this->canConfirm($notifiable);
+        $byReviewer = $this->canConfirm($this->updatedBy) || $this->updatedBy->isAdmin();
 
-        if ($this->newStatus === Report::STATUS_RESOLVED && $toClient) {
+        if ($this->newStatus === Report::STATUS_RESOLVED && $canConfirm) {
             return [
                 'subject' => 'Please Review: ' . $title,
                 'title' => 'Please review: ' . $title,
@@ -75,19 +76,19 @@ class ReportStatusChanged extends AppNotification
 
         if ($this->newStatus === Report::STATUS_RESOLVED) {
             return $this->standardWording(
-                $actor . ' marked this issue as resolved. It is now waiting for the client to review and confirm the fix.',
-                $actor . ' resolved this issue. Waiting for the client to review.'
+                $actor . ' marked this issue as resolved. It is now waiting for the reporter or the manager to review and confirm the fix.',
+                $actor . ' resolved this issue. Waiting for the reporter or manager to review.'
             );
         }
 
-        if ($this->newStatus === Report::STATUS_CLOSED && $this->oldStatus === Report::STATUS_RESOLVED && $byClient) {
+        if ($this->newStatus === Report::STATUS_CLOSED && $this->oldStatus === Report::STATUS_RESOLVED && $byReviewer) {
             return $this->standardWording(
                 $actor . ' reviewed the fix and confirmed the issue is resolved. The issue is now closed.',
                 $actor . ' confirmed the fix. The issue is now closed.'
             );
         }
 
-        if ($this->newStatus === Report::STATUS_REOPENED && $this->oldStatus === Report::STATUS_RESOLVED && $byClient) {
+        if ($this->newStatus === Report::STATUS_REOPENED && $this->oldStatus === Report::STATUS_RESOLVED && $byReviewer) {
             return $this->standardWording(
                 $actor . ' reviewed the fix and reported that the issue is not fixed. It has been reopened.',
                 $actor . ' rejected the fix and reopened the issue.'
@@ -98,6 +99,12 @@ class ReportStatusChanged extends AppNotification
             $actor . ' changed the status of a report.',
             $actor . ' changed the status from ' . $this->formatStatus($this->oldStatus) . ' to ' . $this->formatStatus($this->newStatus) . '.'
         );
+    }
+
+    private function canConfirm(User $user): bool
+    {
+        return $user->id === $this->report->reported_by
+            || ($user->isManager() && $user->company_id !== null && $user->company_id === $this->report->project?->company_id);
     }
 
     private function standardWording(string $intro, string $message): array

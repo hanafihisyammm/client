@@ -33,7 +33,7 @@ class TestNotifications extends Command
 
         // Get test users
         $admin = User::where('role', 'admin')->first();
-        $client = User::where('role', 'client')->first();
+        $client = User::where('role', 'staff')->first();
 
         if (!$admin) {
             $this->error('No admin user found. Please create an admin user first.');

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ANY_PAST_DATE, DatePicker } from '@/components/ui/date-picker'
 import { flashError, flashSuccess } from '@/lib/flash'
+import { todayInAppTimezone } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,7 +44,7 @@ export function TimeTrackingPanel({
   const [formData, setFormData] = useState({
     hours: '',
     description: '',
-    logged_date: new Date().toISOString().split('T')[0]
+    logged_date: todayInAppTimezone()
   })
 
   const fetchCsrfToken = async () => {
@@ -81,7 +82,7 @@ export function TimeTrackingPanel({
 
       if (response.ok) {
         flashSuccess(null, 'Time logged successfully.')
-        setFormData({ hours: '', description: '', logged_date: new Date().toISOString().split('T')[0] })
+        setFormData({ hours: '', description: '', logged_date: todayInAppTimezone() })
         setShowAddForm(false)
         onUpdate()
       } else {

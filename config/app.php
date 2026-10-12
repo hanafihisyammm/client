@@ -69,6 +69,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Business Timezone
+    |--------------------------------------------------------------------------
+    |
+    | Timestamps are stored in UTC (the timezone above) and must stay that way,
+    | because the database columns carry no timezone of their own. This is the
+    | timezone the business works in: it decides which calendar day "today" is,
+    | so due dates become overdue at midnight here rather than midnight UTC.
+    |
+    */
+
+    'business_timezone' => env('APP_BUSINESS_TIMEZONE', 'Asia/Kuala_Lumpur'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |

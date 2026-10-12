@@ -24,35 +24,15 @@ class ReportController extends Controller
         $query = Report::with(['reporter:id,name,email', 'assignee:id,name,email', 'attachments', 'project', 'labels'])
             ->orderBy('created_at', 'desc');
 
-        // Filter reports based on user role and project membership
-        if ($user->isClient()) {
-            // Clients can only see reports from projects they're assigned to
-            $userProjectIds = \DB::table('project_users')
-                ->where('user_id', $user->id)
-                ->pluck('project_id');
-            $query->where(function($q) use ($user, $userProjectIds) {
-                // Reports they created OR reports from their projects
-                $q->where('reported_by', $user->id)
-                  ->orWhereIn('project_id', $userProjectIds);
-            });
-        }
+        // Clients and developers only see reports they raised, are assigned to, or that are in their projects
+        $query->visibleTo($user);
 
         if ($request->has('status') && $request->status !== 'all') {
             $query->where('status', $request->status);
         }
 
         if ($request->has('project') && $request->project !== 'all') {
-            if ($user->isClient()) {
-                // Ensure client can only filter by their accessible projects
-                $userProjectIds = \DB::table('project_users')
-                    ->where('user_id', $user->id)
-                    ->pluck('project_id');
-                if (in_array($request->project, $userProjectIds->toArray())) {
-                    $query->where('project_id', $request->project);
-                }
-            } else {
-                $query->where('project_id', $request->project);
-            }
+            $query->where('project_id', $request->project);
         }
 
         if ($request->has('assigned_to') && $request->assigned_to !== 'all') {
@@ -60,7 +40,8 @@ class ReportController extends Controller
         }
 
         if ($request->has('severity') && $request->severity !== 'all') {
-            $query->where('severity', $request->severity);
+            // Features may still hold the severity they had as a bug, so only bugs count
+            $query->where('type', Report::TYPE_BUG)->where('severity', $request->severity);
         }
 
         if ($request->has('priority') && $request->priority !== 'all') {
@@ -68,9 +49,7 @@ class ReportController extends Controller
         }
 
         if ($request->boolean('overdue')) {
-            $query->whereNotNull('due_date')
-                ->whereDate('due_date', '<', now()->toDateString())
-                ->whereNotIn('status', Report::FINISHED_STATUSES);
+            $query->overdue();
         }
 
         if ($request->has('search')) {
@@ -92,8 +71,10 @@ class ReportController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'required|string',
             'project_id' => 'required|exists:projects,id',
-            'due_date' => 'nullable|date|after_or_equal:today',
+            // "Today" is the Malaysian calendar day, not the UTC one
+            'due_date' => 'nullable|date|after_or_equal:' . Report::businessToday(),
             'priority' => 'required|in:low,medium,high,urgent',
+            'type' => 'nullable|in:' . implode(',', Report::TYPES),
             'severity' => 'nullable|in:critical,major,minor,trivial',
             'estimated_hours' => 'nullable|numeric|min:0',
             'label_ids' => 'nullable|array',
@@ -104,24 +85,15 @@ class ReportController extends Controller
 
         $user = Auth::user();
         
-        // If client, validate they have access to the selected project
-        if ($user->isClient()) {
-            $userProjectIds = \DB::table('project_users')
-                ->where('user_id', $user->id)
-                ->pluck('project_id');
-            if ($userProjectIds->isEmpty()) {
-                return response()->json(['message' => 'You must be assigned to a project before creating reports'], 403);
-            }
-            if (!$userProjectIds->contains($validated['project_id'])) {
-                return response()->json(['message' => 'Unauthorized access to selected project'], 403);
-            }
-        }
-
-
         // Get project name for the legacy project column
         $project = \App\Models\Project::find($validated['project_id']);
         if (!$project) {
             return response()->json(['message' => 'Project not found'], 404);
+        }
+
+        // Managers can only use their company's projects, staff only the projects they are assigned to
+        if (!$project->isVisibleTo($user)) {
+            return response()->json(['message' => 'You do not have access to this project.'], 403);
         }
 
         // New issues can only be raised against a project that is still active
@@ -132,6 +104,8 @@ class ReportController extends Controller
             ], 422);
         }
 
+        $type = $validated['type'] ?? Report::TYPE_BUG;
+
         DB::beginTransaction();
         try {
             $report = Report::create([
@@ -141,7 +115,9 @@ class ReportController extends Controller
                 'project_id' => $validated['project_id'],
                 'due_date' => $validated['due_date'] ?? null,
                 'priority' => $validated['priority'],
-                'severity' => $validated['severity'] ?? 'minor',
+                'type' => $type,
+                // Severity describes how badly something is broken, so only bugs have one
+                'severity' => $type === Report::TYPE_BUG ? ($validated['severity'] ?? 'minor') : null,
                 'estimated_hours' => $validated['estimated_hours'] ?? null,
                 'reported_by' => Auth::id(),
                 'status' => Report::STATUS_OPEN,
@@ -189,28 +165,8 @@ class ReportController extends Controller
     {
         $user = Auth::user();
         
-        if ($user->isClient()) {
-            // Check if client has access to this report
-            $hasAccess = false;
-            
-            // They created the report
-            if ($report->reported_by === $user->id) {
-                $hasAccess = true;
-            }
-            
-            // Or the report belongs to one of their projects
-            if ($report->project_id) {
-                $userProjectIds = \DB::table('project_users')
-                    ->where('user_id', $user->id)
-                    ->pluck('project_id');
-                if ($userProjectIds->contains($report->project_id)) {
-                    $hasAccess = true;
-                }
-            }
-            
-            if (!$hasAccess) {
-                return response()->json(['message' => 'Unauthorized'], 403);
-            }
+        if (!$report->isVisibleTo($user)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $report->load([
@@ -229,9 +185,8 @@ class ReportController extends Controller
 
         // Add computed values
         $report->total_time_spent = $report->getTotalTimeSpent();
-        $report->sla = $report->getSlaInfo();
 
-        return response()->json(['report' => $report]);
+        return response()->json(['report' => $report, 'abilities' => $report->abilitiesFor($user)]);
     }
 
     public function update(Request $request, Report $report): JsonResponse
@@ -241,20 +196,58 @@ class ReportController extends Controller
         $action = $request->input('action');
         $message = 'Issue updated successfully.';
 
-        // Clients can only act on reports they created, except that any client on the
-        // project may review a resolved report (confirm the fix or reopen it)
-        $isReview = in_array($action, ['close', 'reopen', 'transition'], true) && $report->canBeReviewedBy($user);
-        if ($user->isClient() && $report->reported_by !== $user->id && !$isReview) {
+        $abilities = $report->abilitiesFor($user);
+        if (!$abilities['view']) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        // Status changes: first check the move exists in the workflow, then that this user may make it
+        $targetStatus = match ($action) {
+            'start_progress' => Report::STATUS_IN_PROGRESS,
+            'resolve' => Report::STATUS_RESOLVED,
+            'close', 'close_report' => Report::STATUS_CLOSED,
+            'reopen' => Report::STATUS_REOPENED,
+            'transition' => $request->input('new_status'),
+            default => null,
+        };
+
+        if (is_string($targetStatus) && in_array($targetStatus, Report::STATUSES, true)) {
+            if (!$report->canTransitionTo($targetStatus)) {
+                return response()->json([
+                    'message' => 'An issue cannot move from ' . $report->getStatusLabel() . ' to ' . Report::STATUS_LABELS[$targetStatus] . '.',
+                    'valid_transitions' => $report->getValidTransitions(),
+                ], 400);
+            }
+
+            $needed = $report->abilityNeededFor($targetStatus);
+        } else {
+            $needed = match ($action) {
+                'update_report' => 'edit',
+                'assign' => 'assign',
+                'add_comment', 'add_attachments' => 'comment',
+                default => null,
+            };
+        }
+
+        if ($needed !== null && !$abilities[$needed]) {
+            $resolvedItThemselves = $needed === 'confirm' && $report->resolved_by === $user->id;
+
+            return response()->json([
+                'message' => $resolvedItThemselves
+                    ? 'You resolved this issue, so someone else has to confirm the fix.'
+                    : 'You are not allowed to do that.',
+            ], 403);
+        }
+
+        if (!$report->isVisibleTo($user)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Clients can only act on reports they created, except that any client on the
+        // project may review a resolved report (confirm the fix or reopen it)
         switch ($action) {
             // Start progress on an issue (open/reopened -> in_progress)
             case 'start_progress':
-                if (!$user->isAdmin() && $user->role !== 'super_admin' && !in_array($user->role, ['manager', 'developer'])) {
-                    return response()->json(['message' => 'Only team members can start progress on issues'], 403);
-                }
-
                 if (!$report->canTransitionTo(Report::STATUS_IN_PROGRESS)) {
                     return response()->json(['message' => 'Cannot start progress from current status'], 400);
                 }
@@ -266,18 +259,11 @@ class ReportController extends Controller
                     $report->update(['assigned_to' => $user->id]);
                 }
 
-                // Record first response for SLA
-                $report->recordFirstResponse();
-
                 $message = 'Issue moved to In Progress.';
                 break;
 
             // Resolve an issue (in_progress -> resolved)
             case 'resolve':
-                if (!$user->isAdmin() && $user->role !== 'super_admin' && !in_array($user->role, ['manager', 'developer'])) {
-                    return response()->json(['message' => 'Only team members can resolve issues'], 403);
-                }
-
                 if (!$report->canTransitionTo(Report::STATUS_RESOLVED)) {
                     return response()->json(['message' => 'Cannot resolve from current status'], 400);
                 }
@@ -288,7 +274,6 @@ class ReportController extends Controller
 
                 $report->resolve($user, $validated['resolution_summary'] ?? 'Issue resolved');
 
-                // Record resolution time for SLA
                 $report->recordResolution();
 
                 $message = 'Issue marked as resolved.';
@@ -296,16 +281,6 @@ class ReportController extends Controller
 
             // Close an issue (resolved -> closed) - Client confirms fix works
             case 'close':
-                // Allow clients who own the report, or admins to close
-                if (!$user->isAdmin() && $user->role !== 'super_admin' && !$report->canBeReviewedBy($user)) {
-                    return response()->json(['message' => 'Not authorized to close this issue'], 403);
-                }
-
-                // A client who did not report the issue can only confirm a fix, not close open work
-                if ($user->isClient() && $report->reported_by !== $user->id && $report->status !== Report::STATUS_RESOLVED) {
-                    return response()->json(['message' => 'Only resolved issues can be confirmed'], 403);
-                }
-
                 if (!$report->canTransitionTo(Report::STATUS_CLOSED)) {
                     return response()->json(['message' => 'Cannot close from current status'], 400);
                 }
@@ -317,11 +292,6 @@ class ReportController extends Controller
 
             // Reopen an issue (resolved/closed -> reopened) - Client says fix didn't work
             case 'reopen':
-                // Allow clients who own the report, or admins to reopen
-                if (!$user->isAdmin() && $user->role !== 'super_admin' && !$report->canBeReviewedBy($user)) {
-                    return response()->json(['message' => 'Not authorized to reopen this issue'], 403);
-                }
-
                 if (!$report->canTransitionTo(Report::STATUS_REOPENED)) {
                     return response()->json(['message' => 'Cannot reopen from current status'], 400);
                 }
@@ -358,10 +328,6 @@ class ReportController extends Controller
                     ], 400);
                 }
 
-                if ($denied = $this->statusChangeDeniedReason($user, $report, $validated['new_status'])) {
-                    return response()->json(['message' => $denied], 403);
-                }
-
                 $report->transitionTo($validated['new_status'], $user, $validated['resolution_summary'] ?? null);
 
                 // Same follow-up as the dedicated "start progress" and "resolve" actions
@@ -369,7 +335,6 @@ class ReportController extends Controller
                     if (!$report->assigned_to) {
                         $report->update(['assigned_to' => $user->id]);
                     }
-                    $report->recordFirstResponse();
                 } elseif ($validated['new_status'] === Report::STATUS_RESOLVED) {
                     $report->recordResolution();
                 }
@@ -384,18 +349,13 @@ class ReportController extends Controller
                 break;
 
             case 'update_report':
-                // Allow admins, super_admins, and clients who own the report to edit
-                if (!$user->isAdmin() && $user->role !== 'super_admin' && 
-                    !($user->isClient() && $report->reported_by === $user->id)) {
-                    return response()->json(['message' => 'Not authorized to edit this report'], 403);
-                }
-
                 // Different validation rules for clients vs admins
                 $rules = [
                     'title' => 'required|string|max:255',
                     'description' => 'required|string',
                     'due_date' => 'nullable|date',
                     'priority' => 'required|in:low,medium,high,urgent',
+                    'type' => 'nullable|in:' . implode(',', Report::TYPES),
                     'severity' => 'nullable|in:critical,major,minor,trivial',
                     'estimated_hours' => 'nullable|numeric|min:0',
                     'label_ids' => 'nullable|array',
@@ -409,32 +369,57 @@ class ReportController extends Controller
 
                 $validated = $request->validate($rules);
 
+                // The due date can be cleared or left as it is, even if it has already passed,
+                // but a new date has to be today or later (in Malaysia), as when creating an issue
+                $newDueDate = !empty($validated['due_date']) ? \Illuminate\Support\Carbon::parse($validated['due_date'])->toDateString() : null;
+                if ($newDueDate !== null && $newDueDate !== $report->due_date?->toDateString() && $newDueDate < Report::businessToday()) {
+                    return response()->json([
+                        'message' => 'The due date must be today or later.',
+                        'errors' => ['due_date' => ['The due date must be today or later.']],
+                    ], 422);
+                }
+
                 // Capture old values for activity log
                 $oldValues = [
                     'title' => $report->title,
                     'description' => $report->description,
                     'due_date' => $report->due_date,
                     'priority' => $report->priority,
+                    'type' => $report->type,
                     'severity' => $report->severity,
                     'estimated_hours' => $report->estimated_hours,
                 ];
+
+                $type = $validated['type'] ?? $report->type;
+
+                // A feature has no severity, whatever the form sends. A bug uses the one chosen,
+                // else the one it already has (including from before it became a feature), else Minor.
+                $severity = $type === Report::TYPE_BUG
+                    ? ($validated['severity'] ?? $report->storedSeverity() ?? 'minor')
+                    : null;
 
                 // Build update data
                 $updateData = [
                     'title' => $validated['title'],
                     'description' => $validated['description'],
-                    'due_date' => $validated['due_date'] ?? null,
+                    'due_date' => $newDueDate,
                     'priority' => $validated['priority'],
-                    'severity' => $validated['severity'] ?? $report->severity,
+                    'type' => $type,
                     'estimated_hours' => $validated['estimated_hours'] ?? $report->estimated_hours,
                 ];
+
+                // Turning a bug into a feature leaves its severity stored, so it can come back
+                if ($type === Report::TYPE_BUG) {
+                    $updateData['severity'] = $severity;
+                }
 
                 $newValues = [
                     'title' => $validated['title'],
                     'description' => $validated['description'],
-                    'due_date' => $validated['due_date'] ?? null,
+                    'due_date' => $newDueDate,
                     'priority' => $validated['priority'],
-                    'severity' => $validated['severity'] ?? $report->severity,
+                    'type' => $type,
+                    'severity' => $severity,
                     'estimated_hours' => $validated['estimated_hours'] ?? $report->estimated_hours,
                 ];
 
@@ -497,12 +482,6 @@ class ReportController extends Controller
                 break;
 
             case 'close_report':
-                // Allow clients to close their own reports, admins and super_admins can close any report
-                if (!$user->isAdmin() && $user->role !== 'super_admin' && 
-                    !($user->isClient() && $report->reported_by === $user->id)) {
-                    return response()->json(['message' => 'Not authorized to close this report'], 403);
-                }
-
                 // Reports can be closed from most statuses
                 if ($report->status === 'closed') {
                     return response()->json(['message' => 'Report is already closed'], 400);
@@ -530,12 +509,6 @@ class ReportController extends Controller
                 break;
 
             case 'add_comment':
-                // Allow admins, super_admins, and clients (if they own the report) to comment
-                if (!$user->isAdmin() && $user->role !== 'super_admin' &&
-                    !($user->isClient() && $report->reported_by === $user->id)) {
-                    return response()->json(['message' => 'Not authorized to comment'], 403);
-                }
-
                 $validated = $request->validate([
                     'comment' => 'required|string|min:1|max:2000',
                 ]);
@@ -546,11 +519,6 @@ class ReportController extends Controller
                     'comment' => $validated['comment'],
                 ]);
 
-                // Record first response for SLA (if team member commenting, not the reporter)
-                if (!$user->isClient() && $report->reported_by !== $user->id) {
-                    $report->recordFirstResponse();
-                }
-
                 // Send notification for new comment
                 $report->load('project', 'reporter');
                 app(NotificationService::class)->notifyCommentAdded($report, $comment, $user);
@@ -559,17 +527,22 @@ class ReportController extends Controller
                 break;
 
             case 'assign':
-                // Only admins and managers can assign issues
-                if (!$user->isAdmin() && $user->role !== 'super_admin' && $user->role !== 'manager') {
-                    return response()->json(['message' => 'Only admins and managers can assign issues'], 403);
-                }
-
                 $validated = $request->validate([
                     'assignee_id' => 'nullable|exists:users,id',
                 ]);
 
                 $oldAssignee = $report->assignee;
                 $newAssigneeId = $validated['assignee_id'];
+
+                // The assignee must be able to open the issue: an admin, the company's manager, or staff on its project
+                $candidate = $newAssigneeId ? \App\Models\User::find($newAssigneeId) : null;
+                if ($candidate && !$report->canBeAssignedTo($candidate)) {
+                    return response()->json([
+                        'message' => $candidate->isStaff() && $candidate->isActive()
+                            ? "{$candidate->name} is not on this project. Add them to the project first."
+                            : 'Issues can only be assigned to active people who work on this project.',
+                    ], 422);
+                }
 
                 $report->update(['assigned_to' => $newAssigneeId]);
 
@@ -593,13 +566,6 @@ class ReportController extends Controller
                 break;
 
             case 'add_attachments':
-                // Allow admins, super_admins, managers, developers, and clients who own the report
-                if (!$user->isAdmin() && $user->role !== 'super_admin' &&
-                    !in_array($user->role, ['manager', 'developer']) &&
-                    !($user->isClient() && $report->reported_by === $user->id)) {
-                    return response()->json(['message' => 'Not authorized to add attachments'], 403);
-                }
-
                 $request->validate([
                     'attachments' => 'required|array|min:1|max:5',
                     'attachments.*' => 'file|mimes:jpeg,jpg,png,gif,pdf,webp|max:5120',
@@ -648,48 +614,20 @@ class ReportController extends Controller
             'incomingLinks.creator:id,name',
         ]);
         $freshReport->total_time_spent = $freshReport->getTotalTimeSpent();
-        $freshReport->sla = $freshReport->getSlaInfo();
 
         return response()->json([
             'message' => $message,
-            'report' => $freshReport
+            'report' => $freshReport,
+            // What this user may do now that the status has changed
+            'abilities' => $freshReport->abilitiesFor($user),
         ]);
-    }
-
-    /**
-     * Why this user may not move the report to the given status, or null when they may.
-     * Mirrors the rules of the dedicated start progress / resolve / close / reopen actions.
-     */
-    private function statusChangeDeniedReason(\App\Models\User $user, Report $report, string $newStatus): ?string
-    {
-        $isTeamMember = in_array($user->role, ['super_admin', 'admin', 'manager', 'developer'], true);
-
-        switch ($newStatus) {
-            case Report::STATUS_CLOSED:
-                if ($user->isAdmin()) {
-                    return null;
-                }
-                if (!$report->canBeReviewedBy($user)) {
-                    return 'Not authorized to close this issue';
-                }
-                // A client who did not report the issue can only confirm a fix, not close open work
-                return $report->reported_by !== $user->id && $report->status !== Report::STATUS_RESOLVED
-                    ? 'Only resolved issues can be confirmed'
-                    : null;
-
-            case Report::STATUS_REOPENED:
-                return $user->isAdmin() || $report->canBeReviewedBy($user) ? null : 'Not authorized to reopen this issue';
-
-            default:
-                return $isTeamMember ? null : 'Only team members can move an issue to this status';
-        }
     }
 
     public function destroy(Report $report): JsonResponse
     {
         $user = Auth::user();
 
-        if (!$user->isAdmin() && ($user->isClient() && $report->reported_by !== $user->id)) {
+        if (!$report->abilitiesFor($user)['delete']) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

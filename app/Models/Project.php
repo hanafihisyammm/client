@@ -11,6 +11,7 @@ use Illuminate\Support\Str;
 class Project extends Model
 {
     protected $fillable = [
+        'company_id',
         'name',
         'prefix',
         'description',
@@ -100,14 +101,6 @@ class Project extends Model
             ->withTimestamps();
     }
 
-    public function clients(): BelongsToMany
-    {
-        return $this->belongsToMany(User::class, 'project_users')
-            ->where('role', 'client')
-            ->withPivot(['role', 'assigned_at', 'assigned_by'])
-            ->withTimestamps();
-    }
-
     public function reports(): HasMany
     {
         return $this->hasMany(Report::class);
@@ -121,5 +114,52 @@ class Project extends Model
     public function isActive(): bool
     {
         return $this->status === 'active';
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    /**
+     * Limit a query to the projects this user may see: admins see all, a manager
+     * their company's, and staff the projects they are assigned to in their company.
+     */
+    public function scopeVisibleTo($query, User $user)
+    {
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        // Managers and staff with no company see nothing
+        if (!$user->company_id) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $query->where('projects.company_id', $user->company_id);
+
+        return $user->isManager() ? $query : $query->whereIn('projects.id', $user->projectIds());
+    }
+
+    public function isVisibleTo(User $user): bool
+    {
+        if ($user->isAdmin()) {
+            return true;
+        }
+
+        if (!$user->company_id || $this->company_id !== $user->company_id) {
+            return false;
+        }
+
+        return $user->isManager() || $user->projectIds()->contains($this->id);
+    }
+
+    /**
+     * Whether this user may edit the project, change its members or delete it.
+     */
+    public function canBeManagedBy(User $user): bool
+    {
+        return $user->isAdmin()
+            || ($user->isManager() && $user->company_id !== null && $this->company_id === $user->company_id);
     }
 }

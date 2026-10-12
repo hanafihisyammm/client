@@ -5,7 +5,7 @@ import { ArrowLeft, AlertCircle, Users } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 
 interface PageProps {
-    userRole: 'client' | 'admin' | 'super_admin';
+    userRole: 'admin' | 'super_admin' | 'manager' | 'staff';
     message: string;
 }
 

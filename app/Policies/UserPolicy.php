@@ -4,6 +4,10 @@ namespace App\Policies;
 
 use App\Models\User;
 
+/**
+ * The Users page is for admins, who manage accounts across every company.
+ * Managers manage their own staff from their company page (see StaffController).
+ */
 class UserPolicy
 {
     /**
@@ -11,7 +15,7 @@ class UserPolicy
      */
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, ['super_admin', 'admin', 'manager']);
+        return $user->isAdmin();
     }
 
     /**
@@ -19,7 +23,7 @@ class UserPolicy
      */
     public function view(User $user, User $model): bool
     {
-        return in_array($user->role, ['super_admin', 'admin', 'manager']);
+        return $user->isAdmin();
     }
 
     /**
@@ -27,7 +31,7 @@ class UserPolicy
      */
     public function create(User $user): bool
     {
-        return in_array($user->role, ['super_admin', 'admin']);
+        return $user->isAdmin();
     }
 
     /**
@@ -41,11 +45,7 @@ class UserPolicy
         }
 
         // Admin can edit non-super-admin users
-        if ($user->role === 'admin' && $model->role !== 'super_admin') {
-            return true;
-        }
-
-        return false;
+        return $user->role === 'admin' && $model->role !== 'super_admin';
     }
 
     /**
@@ -58,17 +58,15 @@ class UserPolicy
             return false;
         }
 
-        // Super admin can delete anyone (except restrictions above)
-        if ($user->role === 'super_admin') {
-            return true;
-        }
+        return $this->update($user, $model);
+    }
 
-        // Admin can delete non-super-admin users
-        if ($user->role === 'admin' && $model->role !== 'super_admin') {
-            return true;
-        }
-
-        return false;
+    /**
+     * Determine whether the user can deactivate or reactivate the model.
+     */
+    public function deactivate(User $user, User $model): bool
+    {
+        return $this->delete($user, $model);
     }
 
     /**
@@ -92,14 +90,13 @@ class UserPolicy
      */
     public function createRole(User $user, string $role): bool
     {
-        // Super admin can create any role except super_admin
+        // Only a super admin can create another admin
         if ($user->role === 'super_admin') {
-            return in_array($role, ['admin', 'manager', 'developer', 'client']);
+            return in_array($role, ['admin', 'manager', 'staff']);
         }
 
-        // Admin can create manager, developer, and client
         if ($user->role === 'admin') {
-            return in_array($role, ['manager', 'developer', 'client']);
+            return in_array($role, ['manager', 'staff']);
         }
 
         return false;

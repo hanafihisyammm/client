@@ -3,11 +3,7 @@ import { StatCard } from '@/components/stat-card';
 import { columnDragClass, useIssueDrag } from '@/hooks/use-issue-drag';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
-import {
-    ArrowLeft, Edit, Users, FileText, Calendar, User, Clock, CheckCircle2,
-    AlertCircle, FolderKanban, Plus, Settings, RotateCcw,
-    Bug, Sparkles, ArrowUpRight, AlertTriangle, Info
-} from 'lucide-react';
+import { ArrowLeft, Users, FileText, Calendar, User, Clock, CheckCircle2, AlertCircle, FolderKanban, Plus, Settings, RotateCcw, Bug, Sparkles, ArrowUpRight, AlertTriangle, Info, Pencil } from 'lucide-react';
 
 interface UserType {
     id: number;
@@ -44,6 +40,8 @@ interface Project {
 
 interface Props {
     project: Project;
+    /** False for staff, who can view the project but not change its settings */
+    canManage: boolean;
 }
 
 // Status configuration
@@ -66,16 +64,14 @@ const roleColors: Record<string, string> = {
     super_admin: 'bg-gradient-to-br from-red-500 to-rose-600',
     admin: 'bg-gradient-to-br from-blue-500 to-indigo-600',
     manager: 'bg-gradient-to-br from-purple-500 to-violet-600',
-    developer: 'bg-gradient-to-br from-emerald-500 to-teal-600',
-    client: 'bg-gradient-to-br from-amber-500 to-orange-600',
+    staff: 'bg-gradient-to-br from-emerald-500 to-teal-600',
 };
 
 const roleBadgeColors: Record<string, string> = {
     super_admin: 'bg-red-100 text-red-700',
     admin: 'bg-blue-100 text-blue-700',
     manager: 'bg-purple-100 text-purple-700',
-    developer: 'bg-emerald-100 text-emerald-700',
-    client: 'bg-amber-100 text-amber-700',
+    staff: 'bg-emerald-100 text-emerald-700',
 };
 
 function IssueCard({ report, projectPrefix, dragProps = {}, moving = false }: { report: Report; projectPrefix?: string; dragProps?: object; moving?: boolean }) {
@@ -116,7 +112,7 @@ function IssueCard({ report, projectPrefix, dragProps = {}, moving = false }: { 
     );
 }
 
-export default function ProjectShow({ project }: Props) {
+export default function ProjectShow({ project, canManage }: Props) {
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleDateString('en-GB', {
             day: 'numeric',
@@ -134,10 +130,10 @@ export default function ProjectShow({ project }: Props) {
         closed: project.reports.filter(r => r.status === 'closed').length,
     };
 
-    // Team members can drag an issue to another column to change its status
+    // Drag an issue to another column to change its status; the server checks each move is allowed
     const { auth } = usePage<{ auth: { user: { role?: string } } }>().props;
     const drag = useIssueDrag({
-        enabled: ['super_admin', 'admin', 'manager', 'developer'].includes(auth.user.role ?? ''),
+        enabled: !!auth.user.role,
         onMoved: () => router.reload({ only: ['project'] }),
     });
 
@@ -191,17 +187,21 @@ export default function ProjectShow({ project }: Props) {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <Link href={`/reports/create?project=${project.uuid}`}>
-                            <Button>
-                                <Plus className="h-4 w-4 mr-2" />
-                                New Issue
-                            </Button>
-                        </Link>
-                        <Link href={`/projects/${project.uuid}/edit`}>
-                            <Button variant="outline">
-                                <Settings className="h-4 w-4" />
-                            </Button>
-                        </Link>
+                        {project.status === 'active' && (
+                            <Link href={`/reports/create?project=${project.uuid}`}>
+                                <Button>
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    New Issue
+                                </Button>
+                            </Link>
+                        )}
+                        {canManage && (
+                            <Link href={`/projects/${project.uuid}/edit`}>
+                                <Button variant="outline">
+                                    <Pencil className="h-4 w-4" />
+                                </Button>
+                            </Link>
+                        )}
                     </div>
                 </div>
 
@@ -209,7 +209,7 @@ export default function ProjectShow({ project }: Props) {
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
                     <StatCard label="Open" value={stats.open} hint="Not yet started" icon={AlertCircle} color="text-blue-600 bg-blue-50" />
                     <StatCard label="In Progress" value={stats.inProgress} hint="Being worked on" icon={Clock} color="text-amber-600 bg-amber-50" />
-                    <StatCard label="Resolved" value={stats.resolved} hint="Waiting for client to confirm" icon={CheckCircle2} color="text-purple-600 bg-purple-50" />
+                    <StatCard label="Resolved" value={stats.resolved} hint="Waiting for the reporter or manager to confirm" icon={CheckCircle2} color="text-purple-600 bg-purple-50" />
                     <StatCard label="Closed" value={stats.closed} hint="Confirmed and completed" icon={CheckCircle2} color="text-green-600 bg-green-50" />
                     <StatCard label="Reopened" value={stats.reopened} hint="Sent back, needs rework" icon={RotateCcw} color="text-red-600 bg-red-50" />
                 </div>
@@ -288,7 +288,7 @@ export default function ProjectShow({ project }: Props) {
                                 <div>
                                     <p className="text-xs text-gray-400 mb-1">Created by</p>
                                     <div className="flex items-center gap-2">
-                                        <div className={`w-6 h-6 rounded-full ${roleColors[project.creator.role || 'client']} flex items-center justify-center text-white text-xs font-medium`}>
+                                        <div className={`w-6 h-6 rounded-full ${roleColors[project.creator.role || 'staff']} flex items-center justify-center text-white text-xs font-medium`}>
                                             {project.creator.name.charAt(0)}
                                         </div>
                                         <span className="text-sm font-medium text-gray-900">{project.creator.name}</span>
@@ -325,15 +325,15 @@ export default function ProjectShow({ project }: Props) {
                                 <div className="space-y-3">
                                     {project.users.slice(0, 6).map((user) => (
                                         <div key={user.id} className="flex items-center gap-3">
-                                            <div className={`w-8 h-8 rounded-full ${roleColors[user.role || 'client']} flex items-center justify-center text-white text-xs font-medium`}>
+                                            <div className={`w-8 h-8 rounded-full ${roleColors[user.role || 'staff']} flex items-center justify-center text-white text-xs font-medium`}>
                                                 {user.name.charAt(0)}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
                                                 <p className="text-xs text-gray-400 truncate">{user.email}</p>
                                             </div>
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${roleBadgeColors[user.role || 'client']}`}>
-                                                {(user.role || 'client').replace('_', ' ')}
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${roleBadgeColors[user.role || 'staff']}`}>
+                                                {(user.role || 'staff').replace('_', ' ')}
                                             </span>
                                         </div>
                                     ))}
@@ -362,12 +362,14 @@ export default function ProjectShow({ project }: Props) {
                                         Request Feature
                                     </Button>
                                 </Link>
-                                <Link href={`/projects/${project.uuid}/edit`} className="block">
-                                    <Button variant="outline" size="sm" className="w-full justify-start">
-                                        <Settings className="w-4 h-4 mr-2 text-gray-500" />
-                                        Project Settings
-                                    </Button>
-                                </Link>
+                                {canManage && (
+                                    <Link href={`/projects/${project.uuid}/edit`} className="block">
+                                        <Button variant="outline" size="sm" className="w-full justify-start">
+                                            <Pencil className="w-4 h-4 mr-2 text-gray-500" />
+                                            Edit Project
+                                        </Button>
+                                    </Link>
+                                )}
                             </div>
                         </div>
                     </div>

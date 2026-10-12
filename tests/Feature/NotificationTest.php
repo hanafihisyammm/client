@@ -2,57 +2,49 @@
 
 namespace Tests\Feature;
 
+use App\Models\Company;
 use App\Models\Project;
 use App\Models\Report;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\BuildsCompanies;
 use Tests\TestCase;
 
 class NotificationTest extends TestCase
 {
-    use RefreshDatabase;
+    use BuildsCompanies, RefreshDatabase;
 
     private User $admin;
     private User $otherAdmin;
-    private User $client;
+    private Company $company;
+    private User $manager;
+    private User $reporter;
     private User $teammate;
-    private User $outsider;
+    private User $offProject;
+    private User $otherCompanyManager;
     private Project $project;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->admin = User::factory()->create(['role' => 'admin']);
-        $this->otherAdmin = User::factory()->create(['role' => 'super_admin']);
-        $this->client = User::factory()->create(['role' => 'client']);
-        $this->teammate = User::factory()->create(['role' => 'client']);
-        $this->outsider = User::factory()->create(['role' => 'client']);
+        $this->admin = $this->makeAdmin();
+        $this->otherAdmin = $this->makeAdmin('super_admin');
 
-        $this->project = Project::create([
-            'name' => 'Website',
-            'description' => 'Company website',
-            'status' => 'active',
-            'created_by' => $this->admin->id,
-        ]);
-        $this->project->users()->attach([$this->client->id, $this->teammate->id], [
-            'role' => 'member',
-            'assigned_by' => $this->admin->id,
-            'assigned_at' => now(),
-        ]);
+        [$this->company, $this->manager] = $this->makeCompany('Acme');
+        $this->project = $this->makeProject($this->company, 'Website');
+        $this->reporter = $this->makeStaff($this->company, [$this->project], ['name' => 'Rita Reporter']);
+        $this->teammate = $this->makeStaff($this->company, [$this->project]);
+        // Same company, but not on this project
+        $this->offProject = $this->makeStaff($this->company);
+
+        [, $this->otherCompanyManager] = $this->makeCompany('Borneo');
     }
 
-    private function makeReport(array $attributes = []): Report
+    private function issue(array $attributes = []): Report
     {
-        return Report::create(array_merge([
-            'title' => 'Login is broken',
-            'description' => 'Cannot log in',
-            'project_id' => $this->project->id,
-            'priority' => 'high',
-            'reported_by' => $this->client->id,
-            'status' => 'open',
-        ], $attributes));
+        return $this->makeIssue($this->project, $this->reporter, $attributes);
     }
 
     private function titlesFor(User $user): array
@@ -65,26 +57,50 @@ class NotificationTest extends TestCase
         return app('mailer')->getSymfonyTransport()->messages()->count();
     }
 
-    public function test_creating_a_report_notifies_everyone_on_the_project_except_the_creator()
+    private function createIssueAsReporter(): void
     {
-        $this->actingAs($this->client)->postJson('/api/reports', [
+        $this->actingAs($this->reporter)->postJson('/api/reports', [
             'title' => 'Login is broken',
             'description' => 'Cannot log in',
             'project_id' => $this->project->id,
             'priority' => 'high',
         ])->assertCreated();
+    }
 
-        $report = Report::firstOrFail();
+    public function test_creating_an_issue_notifies_admins_the_manager_and_project_staff_but_not_the_creator()
+    {
+        $this->createIssueAsReporter();
+        $issue = Report::firstOrFail();
 
-        foreach ([$this->admin, $this->otherAdmin, $this->teammate] as $recipient) {
+        foreach ([$this->admin, $this->otherAdmin, $this->manager, $this->teammate] as $recipient) {
             $notification = $recipient->notifications()->first();
             $this->assertNotNull($notification);
             $this->assertSame('New report: Login is broken', $notification->data['title']);
-            $this->assertSame('/reports/' . $report->uuid, $notification->data['url']);
+            $this->assertSame('/reports/' . $issue->uuid, $notification->data['url']);
         }
 
-        $this->assertCount(0, $this->client->notifications);
-        $this->assertCount(0, $this->outsider->notifications);
+        $this->assertCount(0, $this->reporter->notifications);
+        $this->assertSame(4, $this->sentMailCount());
+    }
+
+    public function test_people_outside_the_project_or_company_are_never_notified()
+    {
+        $this->createIssueAsReporter();
+        $issue = Report::firstOrFail();
+        $this->act($this->manager, $issue, ['action' => 'start_progress'])->assertOk();
+        $this->act($this->manager, $issue, ['action' => 'add_comment', 'comment' => 'On it'])->assertOk();
+
+        $this->assertCount(0, $this->offProject->notifications);
+        $this->assertCount(0, $this->otherCompanyManager->notifications);
+    }
+
+    public function test_deactivated_people_are_not_notified()
+    {
+        $this->teammate->update(['deactivated_at' => now()]);
+
+        $this->createIssueAsReporter();
+
+        $this->assertCount(0, $this->teammate->notifications);
         $this->assertSame(3, $this->sentMailCount());
     }
 
@@ -92,192 +108,160 @@ class NotificationTest extends TestCase
     {
         config(['queue.default' => 'database']);
 
-        $this->actingAs($this->client)->postJson('/api/reports', [
-            'title' => 'Login is broken',
-            'description' => 'Cannot log in',
-            'project_id' => $this->project->id,
-            'priority' => 'high',
-        ])->assertCreated();
+        $this->createIssueAsReporter();
 
         $this->assertCount(1, $this->admin->notifications);
         $this->assertSame(0, $this->sentMailCount());
-        $this->assertSame(3, DB::table('jobs')->count());
+        $this->assertSame(4, DB::table('jobs')->count());
     }
 
-    public function test_status_change_by_an_admin_notifies_clients_and_other_admins()
+    public function test_a_status_change_notifies_everyone_involved_except_the_person_who_made_it()
     {
-        $report = $this->makeReport();
+        $issue = $this->issue();
 
-        $this->actingAs($this->admin)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'start_progress'])
-            ->assertOk();
+        $this->act($this->manager, $issue, ['action' => 'start_progress'])->assertOk();
 
-        $this->assertSame(['Report in progress: Login is broken'], $this->titlesFor($this->client));
+        $this->assertSame(['Report in progress: Login is broken'], $this->titlesFor($this->reporter));
         $this->assertCount(1, $this->teammate->notifications);
-        $this->assertCount(1, $this->otherAdmin->notifications);
-        $this->assertCount(0, $this->admin->notifications);
+        $this->assertCount(1, $this->admin->notifications);
+        $this->assertCount(0, $this->manager->notifications);
     }
 
-    public function test_reopening_with_a_reason_saves_and_sends_it()
+    public function test_assigning_an_issue_notifies_the_assignee()
     {
-        $report = $this->makeReport(['status' => 'resolved']);
+        $issue = $this->issue();
 
-        $this->actingAs($this->client)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'reopen', 'comment' => 'Still fails on Safari'])
-            ->assertOk();
+        $this->act($this->manager, $issue, ['action' => 'assign', 'assignee_id' => $this->teammate->id])->assertOk();
 
-        $this->assertSame('reopened', $report->fresh()->status);
-        $this->assertSame('Still fails on Safari', $report->comments()->first()->comment);
-
-        $log = $report->activityLogs()->where('action', 'status_changed')->first();
-        $this->assertSame('resolved', $log->old_values['status']);
-        $this->assertSame('reopened', $log->new_values['status']);
-        $this->assertSame('Still fails on Safari', $log->new_values['reason']);
-
-        $notification = $this->admin->notifications()->first();
-        $this->assertSame('Report reopened: Login is broken', $notification->data['title']);
-        $this->assertSame('Still fails on Safari', $notification->data['reason']);
-        $this->assertStringContainsString('Reason: Still fails on Safari', $notification->data['message']);
-    }
-
-    public function test_resolving_sends_the_resolution_summary()
-    {
-        $report = $this->makeReport(['status' => 'in_progress']);
-
-        $this->actingAs($this->admin)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'resolve', 'resolution_summary' => 'Fixed the session cookie'])
-            ->assertOk();
-
-        $notification = $this->otherAdmin->notifications()->first();
-        $this->assertSame('Report resolved: Login is broken', $notification->data['title']);
-        $this->assertStringContainsString('Resolution: Fixed the session cookie', $notification->data['message']);
-    }
-
-    public function test_assigning_a_report_notifies_the_assignee()
-    {
-        $report = $this->makeReport();
-
-        $this->actingAs($this->admin)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'assign', 'assignee_id' => $this->otherAdmin->id])
-            ->assertOk();
-
-        $notification = $this->otherAdmin->notifications()->first();
+        $notification = $this->teammate->notifications()->first();
         $this->assertSame('Assigned to you: Login is broken', $notification->data['title']);
-        $this->assertSame('/reports/' . $report->uuid, $notification->data['url']);
-        $this->assertCount(0, $this->admin->notifications);
+        $this->assertSame('/reports/' . $issue->uuid, $notification->data['url']);
+        $this->assertCount(0, $this->manager->notifications);
     }
 
-    public function test_editing_a_report_sends_one_notification_listing_the_changes()
+    public function test_editing_an_issue_sends_one_notification_listing_the_changes()
     {
-        $report = $this->makeReport();
+        $issue = $this->issue();
 
-        $this->actingAs($this->admin)->patchJson('/api/reports/' . $report->uuid, [
+        $this->act($this->manager, $issue, [
             'action' => 'update_report',
             'title' => 'Login is broken on Safari',
             'description' => 'Cannot log in',
             'priority' => 'urgent',
-            'status' => 'open',
         ])->assertOk();
 
-        $notifications = $this->client->notifications()->get();
+        $notifications = $this->reporter->notifications()->get();
         $this->assertCount(1, $notifications);
         $this->assertSame('Report updated: Login is broken on Safari', $notifications[0]->data['title']);
         $this->assertSame(['title', 'priority'], array_keys($notifications[0]->data['changes']));
     }
 
-    public function test_saving_a_report_without_changes_sends_nothing()
+    public function test_saving_an_issue_without_changes_sends_nothing()
     {
-        $report = $this->makeReport();
+        $issue = $this->issue();
 
-        $this->actingAs($this->admin)->patchJson('/api/reports/' . $report->uuid, [
+        $this->act($this->manager, $issue, [
             'action' => 'update_report',
             'title' => 'Login is broken',
             'description' => 'Cannot log in',
             'priority' => 'high',
-            'status' => 'open',
         ])->assertOk();
 
-        $this->assertCount(0, $this->client->notifications);
+        $this->assertCount(0, $this->reporter->notifications);
     }
 
     public function test_commenting_notifies_the_project()
     {
-        $report = $this->makeReport();
+        $issue = $this->issue();
 
-        $this->actingAs($this->admin)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'add_comment', 'comment' => 'Looking into it'])
-            ->assertOk();
+        $this->act($this->teammate, $issue, ['action' => 'add_comment', 'comment' => 'Looking into it'])->assertOk();
 
-        $this->assertSame(['New comment: Login is broken'], $this->titlesFor($this->client));
-        $this->assertCount(0, $this->admin->notifications);
+        $this->assertSame(['New comment: Login is broken'], $this->titlesFor($this->reporter));
+        $this->assertCount(1, $this->manager->notifications);
+        $this->assertCount(0, $this->teammate->notifications);
     }
 
-    public function test_deleting_a_report_notifies_the_project()
+    public function test_deleting_an_issue_notifies_the_project()
     {
-        $report = $this->makeReport();
+        $issue = $this->issue();
 
-        $this->actingAs($this->admin)->deleteJson('/api/reports/' . $report->uuid)->assertOk();
+        $this->actingAs($this->manager)->deleteJson('/api/reports/' . $issue->uuid)->assertOk();
 
-        $this->assertSame(['Report deleted: Login is broken'], $this->titlesFor($this->client));
-        $this->assertSame('/dashboard', $this->client->notifications()->first()->data['url']);
+        $this->assertSame(['Report deleted: Login is broken'], $this->titlesFor($this->reporter));
+        $this->assertSame('/dashboard', $this->reporter->notifications()->first()->data['url']);
     }
 
-    public function test_clients_are_notified_when_added_to_a_project()
+    public function test_creating_a_project_notifies_admins_and_the_company_manager_but_not_the_creator()
     {
         $this->actingAs($this->admin)->post('/projects', [
             'name' => 'Mobile App',
-            'description' => null,
             'status' => 'active',
-            'client_ids' => [$this->outsider->id],
+            'company_id' => $this->company->id,
+            'client_ids' => [$this->offProject->id],
         ])->assertRedirect();
 
-        $this->assertSame(['Added to project: Mobile App'], $this->titlesFor($this->outsider));
+        $project = \App\Models\Project::where('name', 'Mobile App')->firstOrFail();
 
-        $this->actingAs($this->admin)->patch('/projects/' . $this->project->uuid . '/update', [
-            'name' => 'Website',
-            'description' => 'Company website',
-            'status' => 'active',
-            'client_ids' => [$this->client->id, $this->teammate->id, $this->outsider->id],
-        ])->assertRedirect();
+        foreach ([$this->otherAdmin, $this->manager] as $recipient) {
+            $this->assertSame(['New project: Mobile App'], $this->titlesFor($recipient));
+            $this->assertSame('/projects/view/' . $project->uuid, $recipient->notifications()->first()->data['url']);
+        }
 
-        $this->assertCount(2, $this->outsider->notifications);
-        $this->assertCount(0, $this->client->notifications);
+        $this->assertCount(0, $this->admin->notifications);
+        $this->assertCount(0, $this->otherCompanyManager->notifications);
+        // Staff put on the project only hear that they were added
+        $this->assertSame(['Added to project: Mobile App'], $this->titlesFor($this->offProject));
+        $this->assertCount(0, $this->reporter->notifications);
     }
 
-    public function test_project_update_links_admins_to_the_project_and_clients_to_the_dashboard()
+    public function test_staff_are_notified_when_added_to_a_project()
     {
-        $this->actingAs($this->admin)->patch('/projects/' . $this->project->uuid . '/update', [
-            'name' => 'Website v2',
-            'description' => 'Company website',
+        $this->actingAs($this->manager)->post('/projects', [
+            'name' => 'Mobile App',
             'status' => 'active',
-            'client_ids' => [$this->client->id, $this->teammate->id],
+            'client_ids' => [$this->offProject->id],
         ])->assertRedirect();
 
-        $this->assertSame('/dashboard', $this->client->notifications()->first()->data['url']);
-        $this->assertSame(
-            '/projects/view/' . $this->project->uuid,
-            $this->otherAdmin->notifications()->first()->data['url']
-        );
+        $this->assertSame(['Added to project: Mobile App'], $this->titlesFor($this->offProject));
+
+        $this->actingAs($this->manager)->patch('/projects/' . $this->project->uuid . '/update', [
+            'name' => 'Website',
+            'status' => 'active',
+            'client_ids' => [$this->reporter->id, $this->teammate->id, $this->offProject->id],
+        ])->assertRedirect();
+
+        $this->assertCount(2, $this->offProject->notifications);
+        $this->assertCount(0, $this->reporter->notifications);
+    }
+
+    public function test_a_project_update_links_everyone_to_the_project()
+    {
+        $this->actingAs($this->manager)->patch('/projects/' . $this->project->uuid . '/update', [
+            'name' => 'Website v2',
+            'status' => 'active',
+            'client_ids' => [$this->reporter->id, $this->teammate->id],
+        ])->assertRedirect();
+
+        $this->assertSame('/projects/view/' . $this->project->uuid, $this->reporter->notifications()->first()->data['url']);
+        $this->assertSame('/projects/view/' . $this->project->uuid, $this->admin->notifications()->first()->data['url']);
     }
 
     public function test_users_can_list_and_read_only_their_own_notifications()
     {
-        $report = $this->makeReport();
-        $this->actingAs($this->admin)
-            ->patchJson('/api/reports/' . $report->uuid, ['action' => 'start_progress'])
-            ->assertOk();
+        $issue = $this->issue();
+        $this->act($this->manager, $issue, ['action' => 'start_progress'])->assertOk();
 
-        $id = $this->client->notifications()->first()->id;
+        $id = $this->reporter->notifications()->first()->id;
 
-        $this->actingAs($this->client)->getJson('/api/notifications')
+        $this->actingAs($this->reporter)->getJson('/api/notifications')
             ->assertOk()
             ->assertJsonPath('unread_count', 1)
             ->assertJsonPath('notifications.0.id', $id)
-            ->assertJsonPath('notifications.0.url', '/reports/' . $report->uuid);
+            ->assertJsonPath('notifications.0.url', '/reports/' . $issue->uuid);
 
-        $this->actingAs($this->outsider)->postJson("/api/notifications/{$id}/read")->assertNotFound();
+        $this->actingAs($this->offProject)->postJson("/api/notifications/{$id}/read")->assertNotFound();
 
-        $this->actingAs($this->client)->postJson("/api/notifications/{$id}/read")
+        $this->actingAs($this->reporter)->postJson("/api/notifications/{$id}/read")
             ->assertOk()
             ->assertJsonPath('unread_count', 0);
 

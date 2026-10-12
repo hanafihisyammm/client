@@ -44,13 +44,9 @@ class Report extends Model
         self::STATUS_REOPENED => [self::STATUS_IN_PROGRESS, self::STATUS_CLOSED],
     ];
 
-    // SLA Targets by Priority (in hours)
-    public const SLA_TARGETS = [
-        'urgent' => ['response' => 1, 'resolution' => 4],
-        'high' => ['response' => 4, 'resolution' => 24],
-        'medium' => ['response' => 8, 'resolution' => 48],
-        'low' => ['response' => 24, 'resolution' => 168], // 1 week
-    ];
+    public const TYPE_BUG = 'bug';
+    public const TYPE_FEATURE = 'feature';
+    public const TYPES = [self::TYPE_BUG, self::TYPE_FEATURE];
 
     /**
      * Statuses where the team's work is done, so a report no longer counts as overdue.
@@ -65,12 +61,14 @@ class Report extends Model
         'status',
         'reported_by',
         'assigned_to',
+        'resolved_by',
         'resolution_summary',
         'closed_at',
         'uuid',
         'issue_key',
         'due_date',
         'priority',
+        'type',
         'severity',
         'estimated_hours',
         'first_response_at',
@@ -249,23 +247,139 @@ class Report extends Model
     }
 
     /**
-     * Whether this client may review a resolved report: confirm the fix (close it) or reject it (reopen it).
-     * That is the client who reported it, or any client assigned to its project.
+     * Limit a query to the reports this user may see. Admins see everything. A manager
+     * sees their company's reports. Staff see reports in their company that are in a
+     * project they are assigned to, or that they raised or are assigned to.
      */
-    public function canBeReviewedBy(User $user): bool
+    public function scopeVisibleTo($query, User $user)
     {
-        if (!$user->isClient()) {
-            return false;
+        if ($user->isAdmin()) {
+            return $query;
         }
 
-        if ($this->reported_by === $user->id) {
+        // Managers and staff with no company see nothing
+        if (!$user->company_id) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $query->whereHas('project', fn ($project) => $project->where('company_id', $user->company_id));
+
+        if ($user->isManager()) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($user) {
+            $q->whereIn('reports.project_id', $user->projectIds())
+                ->orWhere('reports.reported_by', $user->id)
+                ->orWhere('reports.assigned_to', $user->id);
+        });
+    }
+
+    /**
+     * Whether this user may open this report (same rule as scopeVisibleTo).
+     */
+    public function isVisibleTo(User $user): bool
+    {
+        if ($user->isAdmin()) {
             return true;
         }
 
-        return $this->project_id !== null && \Illuminate\Support\Facades\DB::table('project_users')
-            ->where('project_id', $this->project_id)
-            ->where('user_id', $user->id)
-            ->exists();
+        if (!$this->belongsToCompanyOf($user)) {
+            return false;
+        }
+
+        return $user->isManager()
+            || $this->reported_by === $user->id
+            || $this->assigned_to === $user->id
+            || $user->projectIds()->contains($this->project_id);
+    }
+
+    /**
+     * Whether the report can be assigned to this user: an admin, the manager of the
+     * report's company, or a staff member assigned to the report's project.
+     */
+    public function canBeAssignedTo(User $assignee): bool
+    {
+        if (!$assignee->isActive()) {
+            return false;
+        }
+
+        if ($assignee->isAdmin()) {
+            return true;
+        }
+
+        if (!$this->belongsToCompanyOf($assignee)) {
+            return false;
+        }
+
+        return $assignee->isManager() || $assignee->projectIds()->contains($this->project_id);
+    }
+
+    /**
+     * What this user may do with the report right now. One place decides it, so the
+     * buttons on the page and the checks on the server can never disagree.
+     *
+     * @return array<string, bool>
+     */
+    public function abilitiesFor(User $user): array
+    {
+        if (!$this->isVisibleTo($user)) {
+            return array_fill_keys(
+                ['view', 'start_progress', 'resolve', 'reopen_work', 'confirm', 'close', 'reopen', 'edit', 'assign', 'comment', 'delete'],
+                false
+            );
+        }
+
+        $isAdmin = $user->isAdmin();
+        $isManager = $user->isManager();
+        $isReporter = $this->reported_by === $user->id;
+
+        // Anyone who can see the report may work on it: admins, the manager, and staff on the project
+        $canWork = true;
+        // Confirming, closing and reopening is for the reporter, the manager, or an admin
+        $canDecide = $isAdmin || $isManager || $isReporter;
+
+        return [
+            'view' => true,
+            'start_progress' => $canWork && in_array($this->status, [self::STATUS_OPEN, self::STATUS_REOPENED], true),
+            'resolve' => $canWork && $this->status === self::STATUS_IN_PROGRESS,
+            // Pull a resolved or in-progress issue back a step
+            'reopen_work' => $canWork && in_array($this->status, [self::STATUS_IN_PROGRESS, self::STATUS_RESOLVED], true),
+            // The person who resolved an issue may not confirm their own fix
+            'confirm' => $this->status === self::STATUS_RESOLVED && $canDecide && $this->resolved_by !== $user->id,
+            'close' => in_array($this->status, [self::STATUS_OPEN, self::STATUS_REOPENED], true) && $canDecide,
+            'reopen' => in_array($this->status, [self::STATUS_RESOLVED, self::STATUS_CLOSED], true) && $canDecide,
+            'edit' => $isAdmin || $isManager || ($isReporter && $this->status === self::STATUS_OPEN),
+            'assign' => $isAdmin || $isManager,
+            'comment' => true,
+            'delete' => $isAdmin || $isManager || ($isReporter && $this->status === self::STATUS_OPEN),
+        ];
+    }
+
+    /**
+     * Which ability is needed to move this report to the given status.
+     */
+    public function abilityNeededFor(string $newStatus): string
+    {
+        return match ($newStatus) {
+            self::STATUS_IN_PROGRESS => $this->status === self::STATUS_RESOLVED ? 'reopen_work' : 'start_progress',
+            self::STATUS_RESOLVED => 'resolve',
+            self::STATUS_OPEN => 'reopen_work',
+            self::STATUS_CLOSED => $this->status === self::STATUS_RESOLVED ? 'confirm' : 'close',
+            default => 'reopen',
+        };
+    }
+
+    private function belongsToCompanyOf(User $user): bool
+    {
+        if (!$user->company_id || !$this->project_id) {
+            return false;
+        }
+
+        // Looked up directly: a loaded "project" relation may have been selected without its company
+        $companyId = \Illuminate\Support\Facades\DB::table('projects')->where('id', $this->project_id)->value('company_id');
+
+        return $companyId === $user->company_id;
     }
 
     /**
@@ -282,6 +396,11 @@ class Report extends Model
         $newValues = ['status' => $newStatus];
 
         $updateData = ['status' => $newStatus];
+
+        // Remember who resolved it, so they cannot confirm their own fix
+        if ($newStatus === self::STATUS_RESOLVED) {
+            $updateData['resolved_by'] = $user->id;
+        }
 
         // Handle special cases
         if ($newStatus === self::STATUS_RESOLVED && $resolutionSummary) {
@@ -389,220 +508,63 @@ class Report extends Model
         ]);
     }
 
-    // ==================== SLA Methods ====================
-
-    /**
-     * Get SLA targets for this report based on priority
-     */
-    public function getSlaTargets(): array
+    public function isBug(): bool
     {
-        return self::SLA_TARGETS[$this->priority] ?? self::SLA_TARGETS['medium'];
+        return ($this->attributes['type'] ?? self::TYPE_BUG) !== self::TYPE_FEATURE;
     }
 
     /**
-     * Record first response (when team member first responds)
+     * Only bugs have a severity. A bug that is turned into a feature keeps its
+     * severity in the database, out of sight, so it comes back if the issue is
+     * turned into a bug again.
      */
-    public function recordFirstResponse(): void
+    public function getSeverityAttribute(?string $value): ?string
     {
-        if ($this->first_response_at) {
-            return; // Already recorded
-        }
-
-        $this->update([
-            'first_response_at' => now(),
-            'response_sla_breached' => $this->isResponseSlaBreached(),
-        ]);
+        return $this->isBug() ? $value : null;
     }
 
     /**
-     * Record resolution time
+     * The severity held in the database, even while the issue is a feature.
+     */
+    public function storedSeverity(): ?string
+    {
+        return $this->attributes['severity'] ?? null;
+    }
+
+    // ==================== Dates ====================
+
+    /**
+     * Today's calendar date where the business works (Malaysia), as Y-m-d.
+     * Timestamps are stored in UTC, but a due date is a plain calendar day,
+     * so it has to be compared with the local day, not the UTC one.
+     */
+    public static function businessToday(): string
+    {
+        return now(config('app.business_timezone'))->toDateString();
+    }
+
+    /**
+     * Issues past their due date that are neither resolved nor closed.
+     */
+    public function scopeOverdue($query)
+    {
+        return $query->whereNotNull('due_date')
+            ->whereDate('due_date', '<', self::businessToday())
+            ->whereNotIn('status', self::FINISHED_STATUSES);
+    }
+
+    public function isOverdue(): bool
+    {
+        return $this->due_date !== null
+            && $this->due_date->toDateString() < self::businessToday()
+            && !in_array($this->status, self::FINISHED_STATUSES, true);
+    }
+
+    /**
+     * Remember when the issue was resolved.
      */
     public function recordResolution(): void
     {
-        $this->update([
-            'resolved_at' => now(),
-            'resolution_sla_breached' => $this->isResolutionSlaBreached(),
-        ]);
-    }
-
-    /**
-     * Check if response SLA is breached
-     */
-    public function isResponseSlaBreached(): bool
-    {
-        $targets = $this->getSlaTargets();
-        $deadline = $this->created_at->addHours($targets['response']);
-
-        if ($this->first_response_at) {
-            return $this->first_response_at->gt($deadline);
-        }
-
-        return now()->gt($deadline);
-    }
-
-    /**
-     * Check if resolution SLA is breached
-     */
-    public function isResolutionSlaBreached(): bool
-    {
-        if ($this->isClosed()) {
-            return false; // Closed issues don't have active SLA
-        }
-
-        $targets = $this->getSlaTargets();
-        $deadline = $this->created_at->addHours($targets['resolution']);
-
-        if ($this->resolved_at) {
-            return $this->resolved_at->gt($deadline);
-        }
-
-        return now()->gt($deadline);
-    }
-
-    /**
-     * Get response SLA status
-     * Returns: 'breached', 'at_risk', 'on_track', 'met'
-     */
-    public function getResponseSlaStatus(): string
-    {
-        $targets = $this->getSlaTargets();
-        $deadline = $this->created_at->addHours($targets['response']);
-
-        // If already responded
-        if ($this->first_response_at) {
-            return $this->first_response_at->gt($deadline) ? 'breached' : 'met';
-        }
-
-        // Check current status
-        $now = now();
-        if ($now->gt($deadline)) {
-            return 'breached';
-        }
-
-        // At risk if less than 25% time remaining
-        $totalHours = $targets['response'];
-        $hoursRemaining = $now->diffInMinutes($deadline) / 60;
-        if ($hoursRemaining < ($totalHours * 0.25)) {
-            return 'at_risk';
-        }
-
-        return 'on_track';
-    }
-
-    /**
-     * Get resolution SLA status
-     * Returns: 'breached', 'at_risk', 'on_track', 'met', 'paused'
-     */
-    public function getResolutionSlaStatus(): string
-    {
-        // Closed issues - SLA complete
-        if ($this->isClosed()) {
-            return $this->resolution_sla_breached ? 'breached' : 'met';
-        }
-
-        // Resolved issues - waiting for close
-        if ($this->isResolved()) {
-            return 'paused';
-        }
-
-        $targets = $this->getSlaTargets();
-        $deadline = $this->created_at->addHours($targets['resolution']);
-
-        $now = now();
-        if ($now->gt($deadline)) {
-            return 'breached';
-        }
-
-        // At risk if less than 25% time remaining
-        $totalHours = $targets['resolution'];
-        $hoursRemaining = $now->diffInMinutes($deadline) / 60;
-        if ($hoursRemaining < ($totalHours * 0.25)) {
-            return 'at_risk';
-        }
-
-        return 'on_track';
-    }
-
-    /**
-     * Get time remaining for response SLA (in minutes, negative if breached)
-     */
-    public function getResponseTimeRemaining(): ?int
-    {
-        if ($this->first_response_at) {
-            return null; // Already responded
-        }
-
-        $targets = $this->getSlaTargets();
-        $deadline = $this->created_at->addHours($targets['response']);
-
-        return now()->diffInMinutes($deadline, false);
-    }
-
-    /**
-     * Get time remaining for resolution SLA (in minutes, negative if breached)
-     */
-    public function getResolutionTimeRemaining(): ?int
-    {
-        if ($this->isClosed()) {
-            return null; // Already resolved
-        }
-
-        if ($this->isResolved()) {
-            return null; // Paused - waiting for close
-        }
-
-        $targets = $this->getSlaTargets();
-        $deadline = $this->created_at->addHours($targets['resolution']);
-
-        return now()->diffInMinutes($deadline, false);
-    }
-
-    /**
-     * Get complete SLA information for API response
-     */
-    public function getSlaInfo(): array
-    {
-        $targets = $this->getSlaTargets();
-
-        return [
-            'targets' => [
-                'response_hours' => $targets['response'],
-                'resolution_hours' => $targets['resolution'],
-            ],
-            'response' => [
-                'status' => $this->getResponseSlaStatus(),
-                'responded_at' => $this->first_response_at?->toIso8601String(),
-                'deadline' => $this->created_at->addHours($targets['response'])->toIso8601String(),
-                'time_remaining_minutes' => $this->getResponseTimeRemaining(),
-                'breached' => $this->response_sla_breached,
-            ],
-            'resolution' => [
-                'status' => $this->getResolutionSlaStatus(),
-                'resolved_at' => $this->resolved_at?->toIso8601String(),
-                'deadline' => $this->created_at->addHours($targets['resolution'])->toIso8601String(),
-                'time_remaining_minutes' => $this->getResolutionTimeRemaining(),
-                'breached' => $this->resolution_sla_breached,
-            ],
-        ];
-    }
-
-    /**
-     * Update SLA breach status (can be called periodically)
-     */
-    public function updateSlaBreachStatus(): void
-    {
-        $updates = [];
-
-        if (!$this->first_response_at && $this->isResponseSlaBreached()) {
-            $updates['response_sla_breached'] = true;
-        }
-
-        if (!$this->isClosed() && !$this->isResolved() && $this->isResolutionSlaBreached()) {
-            $updates['resolution_sla_breached'] = true;
-        }
-
-        if (!empty($updates)) {
-            $this->update($updates);
-        }
+        $this->update(['resolved_at' => now()]);
     }
 }

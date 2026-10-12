@@ -15,11 +15,16 @@ class InvitationTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function invite(string $email = 'new.person@example.com', string $role = 'client'): User
+    private function invite(string $email = 'new.person@example.com', string $role = 'staff'): User
     {
-        $admin = User::factory()->create(['role' => 'super_admin']);
+        $admin = User::where('role', 'super_admin')->first() ?? User::factory()->create(['role' => 'super_admin']);
+        $company = \App\Models\Company::firstOrCreate(['name' => 'Acme'], ['status' => 'active']);
 
-        $this->actingAs($admin)->post('/users', ['email' => $email, 'role' => $role])->assertRedirect('/users');
+        $this->actingAs($admin)->post('/users', [
+            'email' => $email,
+            'role' => $role,
+            'company_id' => $role === 'staff' ? $company->id : null,
+        ])->assertRedirect('/users');
         auth()->logout();
 
         return User::where('email', $email)->firstOrFail();
@@ -34,12 +39,14 @@ class InvitationTest extends TestCase
     {
         Notification::fake();
 
-        foreach (['admin', 'manager', 'developer', 'client'] as $role) {
+        foreach (['admin', 'manager', 'staff'] as $role) {
             $user = $this->invite("{$role}.person@example.com", $role);
 
             $this->assertSame($role, $user->role);
             $this->assertSame(ucfirst($role) . ' Person', $user->name);
             $this->assertNull($user->email_verified_at);
+            // Only staff are placed in a company here; a manager is put in charge of one from the Clients page
+            $this->assertSame($role === 'staff', $user->company_id !== null);
             Notification::assertSentTo($user, UserInvited::class);
         }
     }
@@ -121,11 +128,44 @@ class InvitationTest extends TestCase
         Notification::assertNothingSent();
     }
 
-    public function test_clients_cannot_invite_users()
+    public function test_staff_and_managers_cannot_invite_users_from_the_users_page()
     {
-        $client = User::factory()->create(['role' => 'client']);
+        foreach (['staff', 'manager'] as $role) {
+            $user = User::factory()->create(['role' => $role]);
 
-        $this->actingAs($client)->post('/users', ['email' => 'x@example.com', 'role' => 'client'])->assertForbidden();
+            $this->actingAs($user)->post('/users', ['email' => 'x@example.com', 'role' => 'staff'])->assertForbidden();
+        }
+
         $this->assertDatabaseMissing('users', ['email' => 'x@example.com']);
+    }
+
+    public function test_staff_need_a_company_and_only_a_super_admin_can_invite_an_admin()
+    {
+        $superAdmin = User::factory()->create(['role' => 'super_admin']);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($superAdmin)->post('/users', ['email' => 'no.company@example.com', 'role' => 'staff'])
+            ->assertSessionHasErrors('company_id');
+
+        $this->actingAs($admin)->post('/users', ['email' => 'another.admin@example.com', 'role' => 'admin'])
+            ->assertSessionHasErrors('role');
+
+        $this->assertDatabaseMissing('users', ['email' => 'no.company@example.com']);
+        $this->assertDatabaseMissing('users', ['email' => 'another.admin@example.com']);
+    }
+
+    public function test_a_deactivated_person_cannot_use_their_invitation()
+    {
+        $user = $this->invite();
+        $user->update(['deactivated_at' => now()]);
+
+        $this->get($this->linkFor($user))->assertRedirect('/login');
+        $this->post($this->linkFor($user), [
+            'name' => 'Nora Person',
+            'password' => 'Str0ng-Passw0rd!',
+            'password_confirmation' => 'Str0ng-Passw0rd!',
+        ])->assertRedirect('/login');
+
+        $this->assertNull($user->fresh()->email_verified_at);
     }
 }

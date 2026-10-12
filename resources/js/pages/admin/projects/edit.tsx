@@ -171,14 +171,14 @@ export default function ProjectEdit({ project, clients }: Props) {
 
                                 <Card>
                                     <CardHeader>
-                                        <CardTitle>Assign Clients</CardTitle>
+                                        <CardTitle>Team Members</CardTitle>
                                         <p className="text-sm text-gray-600">
-                                            Select which clients should have access to this project
+                                            Select the staff of this company who should work on this project
                                         </p>
                                     </CardHeader>
                                     <CardContent>
                                         {clients.length === 0 ? (
-                                            <p className="text-gray-500">No clients available</p>
+                                            <p className="text-gray-500">This company has no active staff yet</p>
                                         ) : (
                                             <div className="space-y-3 max-h-64 overflow-y-auto">
                                                 {clients.map((client) => (

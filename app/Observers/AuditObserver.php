@@ -3,6 +3,7 @@
 namespace App\Observers;
 
 use App\Models\AuditLog;
+use App\Models\Company;
 use App\Models\Project;
 use App\Models\Report;
 use App\Models\ReportComment;
@@ -76,6 +77,7 @@ class AuditObserver
     {
         return match (true) {
             $model instanceof User => 'user',
+            $model instanceof Company => 'company',
             $model instanceof Project => 'project',
             $model instanceof Report => 'report',
             $model instanceof ReportComment => 'comment',
@@ -87,6 +89,7 @@ class AuditObserver
     {
         return match (true) {
             $model instanceof User => $model->name . ' (' . $model->email . ')',
+            $model instanceof Company => $model->name,
             $model instanceof Project => $model->name,
             $model instanceof Report => $model->title,
             $model instanceof ReportComment => $model->report?->title ?? 'Unknown report',

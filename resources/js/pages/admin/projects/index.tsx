@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { PlusIcon, Users, FileText, Edit, Trash2, Eye, Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, FolderKanban, CheckCircle2, Clock, Loader2, XCircle, Briefcase, X, RotateCcw } from 'lucide-react';
+import { PlusIcon, Users, FileText, Edit, Trash2, Eye, Search, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, FolderKanban, CheckCircle2, Clock, Loader2, XCircle, Briefcase, X, RotateCcw, Pencil } from 'lucide-react';
 
 interface User {
     id: number;
@@ -30,6 +30,7 @@ interface Project {
     updated_at: string;
     creator: User;
     users: User[];
+    company?: { id: number; uuid: string; name: string } | null;
     reports_count: number;
     open_reports_count?: number;
     in_progress_reports_count?: number;
@@ -40,6 +41,10 @@ interface Project {
 
 interface Props {
     projects: Project[];
+    /** False for staff, who only see the projects they are assigned to and cannot change them */
+    canManage: boolean;
+    /** True for admins, who see every company's projects */
+    showCompany: boolean;
 }
 
 type SortField = 'name' | 'status' | 'reports_count' | 'created_at'
@@ -118,7 +123,7 @@ function ReportStatusBadge({ count, type }: { count: number; type: 'open' | 'in_
 }
 
 // Stats card
-export default function ProjectIndex({ projects }: Props) {
+export default function ProjectIndex({ projects, canManage, showCompany }: Props) {
     const [deleteProject, setDeleteProject] = useState<Project | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -214,17 +219,22 @@ export default function ProjectIndex({ projects }: Props) {
 
     return (
         <AppLayout>
-            <Head title="Projects" />
+            <Head title={canManage ? 'Projects' : 'My Projects'} />
 
             <div className="space-y-6">
                 {/* Header */}
-                <PageHeader title="Projects" description="Manage projects and track their progress">
-                    <Link href="/projects/create">
-                        <Button className="shadow-sm">
-                            <PlusIcon className="h-4 w-4 mr-2" />
-                            Create Project
-                        </Button>
-                    </Link>
+                <PageHeader
+                    title={canManage ? 'Projects' : 'My Projects'}
+                    description={canManage ? 'Manage projects and track their progress' : 'The projects you are part of, and how their issues are progressing'}
+                >
+                    {canManage && (
+                        <Link href="/projects/create">
+                            <Button className="shadow-sm">
+                                <PlusIcon className="h-4 w-4 mr-2" />
+                                Create Project
+                            </Button>
+                        </Link>
+                    )}
                 </PageHeader>
 
                 {/* Stats Cards */}
@@ -322,6 +332,11 @@ export default function ProjectIndex({ projects }: Props) {
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-slate-50/50">
+                                {/* Actions come first so the "..." menu is always in the same place */}
+                                <TableHead className="w-[50px]"></TableHead>
+                                {showCompany && (
+                                    <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground">Client</TableHead>
+                                )}
                                 <TableHead className="w-[280px]">
                                     <Button
                                         variant="ghost"
@@ -343,7 +358,7 @@ export default function ProjectIndex({ projects }: Props) {
                                     </Button>
                                 </TableHead>
                                 <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground text-center">
-                                    Clients
+                                    Staff
                                 </TableHead>
                                 <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground text-center" colSpan={5}>
                                     Issue Status
@@ -368,9 +383,10 @@ export default function ProjectIndex({ projects }: Props) {
                                         {getSortIcon('created_at')}
                                     </Button>
                                 </TableHead>
-                                <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                             <TableRow className="bg-slate-50/30 border-b">
+                                <TableHead></TableHead>
+                                {showCompany && <TableHead></TableHead>}
                                 <TableHead></TableHead>
                                 <TableHead></TableHead>
                                 <TableHead></TableHead>
@@ -381,13 +397,12 @@ export default function ProjectIndex({ projects }: Props) {
                                 <TableHead className="text-xs text-muted-foreground font-normal text-center py-1">Reopened</TableHead>
                                 <TableHead></TableHead>
                                 <TableHead></TableHead>
-                                <TableHead></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filteredAndSortedProjects.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={11} className="h-32 text-center">
+                                    <TableCell colSpan={12} className="h-32 text-center">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                             <FolderKanban className="h-8 w-8 opacity-50" />
                                             <p>No projects found</p>
@@ -413,6 +428,57 @@ export default function ProjectIndex({ projects }: Props) {
                                         className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
                                         onClick={() => handleView(project.uuid)}
                                     >
+                                        <TableCell onClick={(e) => e.stopPropagation()}>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0"
+                                                    >
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="start" className="w-48">
+                                                    <DropdownMenuItem
+                                                        onClick={() => handleView(project.uuid)}
+                                                        className="cursor-pointer"
+                                                    >
+                                                        <Eye className="mr-2 h-4 w-4" />
+                                                        View Project
+                                                    </DropdownMenuItem>
+                                                    {canManage && (
+                                                        <>
+                                                            <DropdownMenuItem asChild>
+                                                                <Link href={`/projects/${project.uuid}/edit`} className="flex items-center cursor-pointer">
+                                                                    <Pencil className="mr-2 h-4 w-4" />
+                                                                    Edit Project
+                                                                </Link>
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                                onClick={() => setDeleteProject(project)}
+                                                                className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+                                                            >
+                                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                                Delete Project
+                                                            </DropdownMenuItem>
+                                                        </>
+                                                    )}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                        {showCompany && (
+                                            <TableCell className="text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                                {project.company ? (
+                                                    <Link href={`/clients/${project.company.uuid}`} className="hover:underline">
+                                                        {project.company.name}
+                                                    </Link>
+                                                ) : (
+                                                    <span className="text-muted-foreground">Unassigned</span>
+                                                )}
+                                            </TableCell>
+                                        )}
                                         <TableCell>
                                             <div className="flex items-center gap-3">
                                                 <ProjectAvatar name={project.name} />
@@ -458,42 +524,6 @@ export default function ProjectIndex({ projects }: Props) {
                                         </TableCell>
                                         <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                                             {new Date(project.created_at).toLocaleDateString()}
-                                        </TableCell>
-                                        <TableCell onClick={(e) => e.stopPropagation()}>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-8 w-8 p-0"
-                                                    >
-                                                        <MoreHorizontal className="h-4 w-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-48">
-                                                    <DropdownMenuItem
-                                                        onClick={() => handleView(project.uuid)}
-                                                        className="cursor-pointer"
-                                                    >
-                                                        <Eye className="mr-2 h-4 w-4" />
-                                                        View Project
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem asChild>
-                                                        <Link href={`/projects/${project.uuid}/edit`} className="flex items-center cursor-pointer">
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Edit Project
-                                                        </Link>
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                    <DropdownMenuItem
-                                                        onClick={() => setDeleteProject(project)}
-                                                        className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
-                                                    >
-                                                        <Trash2 className="mr-2 h-4 w-4" />
-                                                        Delete Project
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
                                         </TableCell>
                                     </TableRow>
                                 ))

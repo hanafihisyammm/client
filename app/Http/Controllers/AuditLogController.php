@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
@@ -47,12 +48,15 @@ class AuditLogController extends Controller
             $query->where('user_id', (int) $filters['user']);
         }
 
+        // The chosen days are Malaysian calendar days, while created_at is stored in UTC
+        $timezone = config('app.business_timezone');
+
         if (!empty($filters['from'])) {
-            $query->whereDate('created_at', '>=', $filters['from']);
+            $query->where('created_at', '>=', Carbon::parse($filters['from'], $timezone)->startOfDay()->utc());
         }
 
         if (!empty($filters['to'])) {
-            $query->whereDate('created_at', '<=', $filters['to']);
+            $query->where('created_at', '<=', Carbon::parse($filters['to'], $timezone)->endOfDay()->utc());
         }
 
         return Inertia::render('admin/audit-logs/index', [

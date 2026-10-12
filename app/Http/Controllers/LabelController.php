@@ -13,7 +13,7 @@ class LabelController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->canManageProjects() && !$user->isDeveloper()) {
+        if (!$project->isVisibleTo($user)) {
             abort(403, 'Unauthorized');
         }
 
@@ -26,7 +26,7 @@ class LabelController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->canManageProjects()) {
+        if (!$project->canBeManagedBy($user)) {
             abort(403, 'Unauthorized');
         }
 
@@ -48,7 +48,7 @@ class LabelController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->canManageProjects()) {
+        if (!$project->canBeManagedBy($user)) {
             abort(403, 'Unauthorized');
         }
 
@@ -74,7 +74,7 @@ class LabelController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->canManageProjects()) {
+        if (!$project->canBeManagedBy($user)) {
             abort(403, 'Unauthorized');
         }
 

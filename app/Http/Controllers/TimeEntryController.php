@@ -14,6 +14,10 @@ class TimeEntryController extends Controller
     {
         $user = Auth::user();
 
+        if (!$report->isVisibleTo($user)) {
+            abort(403, 'Unauthorized');
+        }
+
         $timeEntries = $report->timeEntries()
             ->with('user:id,name,email')
             ->get();
@@ -31,21 +35,21 @@ class TimeEntryController extends Controller
     {
         $user = Auth::user();
 
-        // Only admins, managers, and developers can log time
-        if (!$user->isAdmin() && !$user->isManager() && !$user->isDeveloper()) {
+        if (!$report->isVisibleTo($user)) {
             abort(403, 'Unauthorized');
         }
+
 
         $validated = $request->validate([
             'hours' => 'required|numeric|min:0.25|max:24',
             'description' => 'nullable|string|max:500',
-            'logged_date' => 'required|date|before_or_equal:today',
+            'logged_date' => 'required|date|before_or_equal:' . Report::businessToday(),
         ]);
 
         $timeEntry = $report->timeEntries()->create([
             'user_id' => $user->id,
             'hours' => $validated['hours'],
-            'description' => $validated['description'],
+            'description' => $validated['description'] ?? null,
             'logged_date' => $validated['logged_date'],
         ]);
 
@@ -56,7 +60,7 @@ class TimeEntryController extends Controller
             'action' => 'logged_time',
             'new_values' => [
                 'hours' => $validated['hours'],
-                'description' => $validated['description'],
+                'description' => $validated['description'] ?? null,
             ],
         ]);
 
@@ -73,6 +77,10 @@ class TimeEntryController extends Controller
     {
         $user = Auth::user();
 
+        if (!$report->isVisibleTo($user)) {
+            abort(403, 'Unauthorized');
+        }
+
         // Only the creator or admin can update time entries
         if ($timeEntry->user_id !== $user->id && !$user->isAdmin()) {
             abort(403, 'Unauthorized');
@@ -85,7 +93,7 @@ class TimeEntryController extends Controller
         $validated = $request->validate([
             'hours' => 'required|numeric|min:0.25|max:24',
             'description' => 'nullable|string|max:500',
-            'logged_date' => 'required|date|before_or_equal:today',
+            'logged_date' => 'required|date|before_or_equal:' . Report::businessToday(),
         ]);
 
         $oldValues = [
@@ -103,7 +111,7 @@ class TimeEntryController extends Controller
             'old_values' => $oldValues,
             'new_values' => [
                 'hours' => $validated['hours'],
-                'description' => $validated['description'],
+                'description' => $validated['description'] ?? null,
             ],
         ]);
 
@@ -119,6 +127,10 @@ class TimeEntryController extends Controller
     public function destroy(Report $report, TimeEntry $timeEntry)
     {
         $user = Auth::user();
+
+        if (!$report->isVisibleTo($user)) {
+            abort(403, 'Unauthorized');
+        }
 
         // Only the creator or admin can delete time entries
         if ($timeEntry->user_id !== $user->id && !$user->isAdmin()) {

@@ -49,6 +49,15 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        // Deactivated accounts cannot log in, even with the right password
+        if (! Auth::user()->isActive()) {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'email' => \App\Http\Middleware\EnsureUserIsActive::MESSAGE,
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 

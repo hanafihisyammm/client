@@ -14,7 +14,11 @@ return [
     |
     */
 
-    'default' => env('MAIL_MAILER', 'log'),
+    // On a local machine mail is written to the log, never sent, unless
+    // MAIL_SEND_REAL_EMAIL=true is set on purpose to test real delivery.
+    'default' => env('APP_ENV', 'production') === 'local' && ! env('MAIL_SEND_REAL_EMAIL', false)
+        ? 'log'
+        : env('MAIL_MAILER', 'log'),
 
     /*
     |--------------------------------------------------------------------------

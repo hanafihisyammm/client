@@ -1,7 +1,9 @@
 import { router } from '@inertiajs/react';
 import { columnDragClass, useIssueDrag, type IssueStatus } from '@/hooks/use-issue-drag';
 import { Badge } from '@/components/ui/badge';
-import { User as UserIcon, Clock, ArrowUpRight, AlertTriangle, AlertCircle, Info, AlertOctagon, Gauge } from 'lucide-react';
+import { isIssueOverdue } from '@/lib/utils';
+import { IssueTypeBadge } from '@/components/issue-type-badge';
+import { User as UserIcon, Clock, ArrowUpRight, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 
 interface Label {
     id: number;
@@ -19,7 +21,8 @@ interface Report {
     status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'reopened';
     due_date?: string | null;
     priority: 'low' | 'medium' | 'high' | 'urgent';
-    severity?: 'trivial' | 'minor' | 'major' | 'critical';
+    type?: 'bug' | 'feature';
+    severity?: 'trivial' | 'minor' | 'major' | 'critical' | null;
     reporter: { id: number; name: string; email: string };
     assignee?: { id: number; name: string; email: string };
     labels?: Label[];
@@ -89,51 +92,12 @@ const severityColors = {
     trivial: 'bg-gray-400 text-white',
 };
 
-// SLA targets by priority (in hours)
-const SLA_TARGETS: Record<string, { response: number; resolution: number }> = {
-    urgent: { response: 1, resolution: 4 },
-    high: { response: 4, resolution: 24 },
-    medium: { response: 8, resolution: 48 },
-    low: { response: 24, resolution: 168 },
-};
-
-// Calculate SLA status for a report
-function getSlaStatus(report: Report): { status: 'breached' | 'at_risk' | 'on_track' | 'met'; label: string } | null {
-    // Don't show SLA for closed issues
-    if (report.status === 'closed') {
-        return null;
-    }
-
-    const targets = SLA_TARGETS[report.priority] || SLA_TARGETS.medium;
-    const createdAt = new Date(report.created_at);
-    const now = new Date();
-    const resolutionDeadline = new Date(createdAt.getTime() + targets.resolution * 60 * 60 * 1000);
-
-    // Check resolution SLA
-    const minutesRemaining = (resolutionDeadline.getTime() - now.getTime()) / (60 * 1000);
-    const totalMinutes = targets.resolution * 60;
-
-    if (minutesRemaining < 0) {
-        const hoursOverdue = Math.abs(Math.floor(minutesRemaining / 60));
-        return { status: 'breached', label: `-${hoursOverdue}h` };
-    }
-
-    // At risk if less than 25% time remaining
-    if (minutesRemaining < totalMinutes * 0.25) {
-        const hoursRemaining = Math.floor(minutesRemaining / 60);
-        return { status: 'at_risk', label: `${hoursRemaining}h` };
-    }
-
-    return { status: 'on_track', label: '' };
-}
-
 function IssueCard({ report, dragProps = {}, moving = false }: { report: Report; dragProps?: object; moving?: boolean }) {
     const projectName = typeof report.project === 'object' ? report.project?.name : report.project;
     const PriorityIcon = priorityConfig[report.priority]?.icon || Info;
     const priorityColor = priorityConfig[report.priority]?.color || 'text-gray-600';
 
-    const isOverdue = report.due_date && new Date(report.due_date) < new Date() && report.status !== 'closed';
-    const slaStatus = getSlaStatus(report);
+    const isOverdue = isIssueOverdue(report.due_date, report.status);
 
     return (
         <div
@@ -143,12 +107,16 @@ function IssueCard({ report, dragProps = {}, moving = false }: { report: Report;
         >
             {/* Issue Key & Priority */}
             <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-mono text-gray-500 group-hover:text-blue-600 transition-colors">
-                    {report.issue_key || `#${report.id}`}
-                </span>
+                <div className="flex min-w-0 items-center gap-2">
+                    <span className="text-xs font-mono text-gray-500 group-hover:text-blue-600 transition-colors">
+                        {report.issue_key || `#${report.id}`}
+                    </span>
+                    <IssueTypeBadge type={report.type} />
+                </div>
                 <div className="flex items-center gap-1">
                     <PriorityIcon className={`w-4 h-4 ${priorityColor}`} />
-                    {report.severity && (
+                    {/* Severity belongs to bugs only */}
+                    {report.type !== 'feature' && report.severity && (
                         <Badge className={`text-[10px] px-1.5 py-0 ${severityColors[report.severity]}`}>
                             {report.severity.charAt(0).toUpperCase()}
                         </Badge>
@@ -203,24 +171,6 @@ function IssueCard({ report, dragProps = {}, moving = false }: { report: Report;
                         </div>
                     )}
 
-                    {/* SLA Indicator */}
-                    {slaStatus && slaStatus.status !== 'on_track' && (
-                        <div
-                            className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded ${
-                                slaStatus.status === 'breached'
-                                    ? 'bg-red-100 text-red-700'
-                                    : 'bg-amber-100 text-amber-700'
-                            }`}
-                            title={slaStatus.status === 'breached' ? 'SLA Breached' : 'SLA At Risk'}
-                        >
-                            {slaStatus.status === 'breached' ? (
-                                <AlertOctagon className="w-3 h-3" />
-                            ) : (
-                                <Gauge className="w-3 h-3" />
-                            )}
-                            {slaStatus.label && <span className="text-[10px] font-medium">{slaStatus.label}</span>}
-                        </div>
-                    )}
                 </div>
 
                 {/* Project */}

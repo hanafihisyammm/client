@@ -34,17 +34,17 @@ class ProjectUpdated extends AppNotification
                 'Updated by' => $this->nameWithRole($this->updatedBy),
                 ...$this->formatChanges(),
             ],
-            $notifiable->isAdmin() ? 'View Project' : 'Open Issues',
+            'View Project',
             $this->urlFor($notifiable)
         );
     }
 
     /**
-     * Only admins can open project pages; clients are sent to their dashboard.
+     * Everyone notified about a project can open it: admins, its manager, and the staff on it.
      */
     private function urlFor(object $notifiable): string
     {
-        return $notifiable->isAdmin() ? '/projects/view/' . $this->project->uuid : '/dashboard';
+        return '/projects/view/' . $this->project->uuid;
     }
 
     /**

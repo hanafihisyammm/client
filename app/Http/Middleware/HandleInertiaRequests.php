@@ -43,7 +43,8 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
-                'user' => $request->user(),
+                // The company is included so the menu can link a manager to their own company page
+                'user' => $request->user()?->loadMissing('company:id,uuid,name'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'csrfToken' => csrf_token(),

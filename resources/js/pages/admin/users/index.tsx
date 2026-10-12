@@ -11,7 +11,7 @@ import { StatCard } from '@/components/stat-card';
 import { flashError } from '@/lib/flash';
 import { filterControlClass } from '@/lib/utils';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { PlusIcon, Edit, TrashIcon, Search, Eye, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, Users, Shield, UserCog, Code, User, Mail, Calendar, Send, X } from 'lucide-react';
+import { PlusIcon, Edit, TrashIcon, Search, Eye, ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, Users, Shield, UserCog, Code, User, Mail, Calendar, Send, X, Ban, Pencil } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 interface User {
@@ -22,6 +22,8 @@ interface User {
     role: string;
     created_at: string;
     email_verified_at: string | null;
+    deactivated_at: string | null;
+    company?: { id: number; uuid: string; name: string } | null;
 }
 
 interface Props {
@@ -44,8 +46,7 @@ function UserAvatar({ name, role }: { name: string; role: string }) {
         super_admin: 'bg-gradient-to-br from-red-500 to-rose-600',
         admin: 'bg-gradient-to-br from-blue-500 to-indigo-600',
         manager: 'bg-gradient-to-br from-purple-500 to-violet-600',
-        developer: 'bg-gradient-to-br from-emerald-500 to-teal-600',
-        client: 'bg-gradient-to-br from-amber-500 to-orange-600',
+        staff: 'bg-gradient-to-br from-emerald-500 to-teal-600',
     }[role] || 'bg-gradient-to-br from-gray-400 to-gray-500';
 
     return (
@@ -73,15 +74,10 @@ function RoleBadge({ role }: { role: string }) {
             className: 'bg-purple-50 text-purple-700 border-purple-200 ring-purple-600/10',
             icon: Users
         },
-        developer: {
-            label: 'Developer',
+        staff: {
+            label: 'Staff',
             className: 'bg-emerald-50 text-emerald-700 border-emerald-200 ring-emerald-600/10',
             icon: Code
-        },
-        client: {
-            label: 'Client',
-            className: 'bg-amber-50 text-amber-700 border-amber-200 ring-amber-600/10',
-            icon: User
         },
     }[role] || {
         label: role,
@@ -100,8 +96,17 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 // Status badge
-function StatusBadge({ isActive }: { isActive: boolean }) {
-    return isActive ? (
+function StatusBadge({ user }: { user: User }) {
+    if (user.deactivated_at) {
+        return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                Deactivated
+            </span>
+        );
+    }
+
+    return user.email_verified_at ? (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
             Active
@@ -146,9 +151,8 @@ export default function Index({ users }: Props) {
             const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                                 user.email.toLowerCase().includes(searchQuery.toLowerCase());
             const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-            const matchesStatus = statusFilter === 'all' ||
-                                (statusFilter === 'active' && user.email_verified_at) ||
-                                (statusFilter === 'pending' && !user.email_verified_at);
+            const status = user.deactivated_at ? 'deactivated' : user.email_verified_at ? 'active' : 'pending';
+            const matchesStatus = statusFilter === 'all' || statusFilter === status;
 
             return matchesSearch && matchesRole && matchesStatus;
         });
@@ -187,7 +191,7 @@ export default function Index({ users }: Props) {
     const stats = useMemo(() => ({
         total: users.length,
         admins: users.filter(u => u.role === 'admin' || u.role === 'super_admin').length,
-        active: users.filter(u => u.email_verified_at).length,
+        active: users.filter(u => u.email_verified_at && !u.deactivated_at).length,
     }), [users]);
 
     const handleSort = (field: SortField) => {
@@ -286,8 +290,7 @@ export default function Index({ users }: Props) {
                             <SelectItem value="super_admin">Super Admin</SelectItem>
                             <SelectItem value="admin">Admin</SelectItem>
                             <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="developer">Developer</SelectItem>
-                            <SelectItem value="client">Client</SelectItem>
+                            <SelectItem value="staff">Staff</SelectItem>
                         </SelectContent>
                     </Select>
 
@@ -299,6 +302,7 @@ export default function Index({ users }: Props) {
                             <SelectItem value="all">All Status</SelectItem>
                             <SelectItem value="active">Active</SelectItem>
                             <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="deactivated">Deactivated</SelectItem>
                         </SelectContent>
                     </Select>
 
@@ -331,6 +335,8 @@ export default function Index({ users }: Props) {
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-slate-50/50">
+                                {/* Actions come first so the "..." menu is always in the same place */}
+                                <TableHead className="w-[50px]"></TableHead>
                                 <TableHead className="w-[300px]">
                                     <Button
                                         variant="ghost"
@@ -352,6 +358,9 @@ export default function Index({ users }: Props) {
                                     </Button>
                                 </TableHead>
                                 <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground">
+                                    Client
+                                </TableHead>
+                                <TableHead className="font-medium text-xs uppercase tracking-wider text-muted-foreground">
                                     Status
                                 </TableHead>
                                 <TableHead>
@@ -364,13 +373,12 @@ export default function Index({ users }: Props) {
                                         {getSortIcon('created_at')}
                                     </Button>
                                 </TableHead>
-                                <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filteredAndSortedUsers.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="h-32 text-center">
+                                    <TableCell colSpan={6} className="h-32 text-center">
                                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                             <Users className="h-8 w-8 opacity-50" />
                                             <p>No users found</p>
@@ -397,31 +405,6 @@ export default function Index({ users }: Props) {
                                     className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
                                     onClick={() => window.location.href = `/users/${user.uuid}`}
                                 >
-                                        <TableCell>
-                                            <div className="flex items-center gap-3">
-                                                <UserAvatar name={user.name} role={user.role} />
-                                                <div className="min-w-0">
-                                                    <p className="font-medium text-gray-900 truncate">
-                                                        {user.name}
-                                                    </p>
-                                                    <p className="text-sm text-muted-foreground truncate">
-                                                        {user.email}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <RoleBadge role={user.role} />
-                                        </TableCell>
-                                        <TableCell>
-                                            <StatusBadge isActive={!!user.email_verified_at} />
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                                <Calendar className="h-3.5 w-3.5" />
-                                                {formatDate(user.created_at)}
-                                            </div>
-                                        </TableCell>
                                         <TableCell onClick={(e) => e.stopPropagation()}>
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -433,7 +416,7 @@ export default function Index({ users }: Props) {
                                                         <MoreHorizontal className="h-4 w-4" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-48">
+                                                <DropdownMenuContent align="start" className="w-48">
                                                     <DropdownMenuItem asChild>
                                                         <Link href={`/users/${user.uuid}`} className="flex items-center cursor-pointer">
                                                             <Eye className="mr-2 h-4 w-4" />
@@ -442,7 +425,7 @@ export default function Index({ users }: Props) {
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem asChild>
                                                         <Link href={`/users/${user.uuid}/edit`} className="flex items-center cursor-pointer">
-                                                            <Edit className="mr-2 h-4 w-4" />
+                                                            <Pencil className="mr-2 h-4 w-4" />
                                                             Edit User
                                                         </Link>
                                                     </DropdownMenuItem>
@@ -459,6 +442,13 @@ export default function Index({ users }: Props) {
                                                         <>
                                                             <DropdownMenuSeparator />
                                                             <DropdownMenuItem
+                                                                onClick={() => router.post(`/users/${user.uuid}/${user.deactivated_at ? 'reactivate' : 'deactivate'}`, {}, { preserveScroll: true })}
+                                                                className="cursor-pointer"
+                                                            >
+                                                                <Ban className="mr-2 h-4 w-4" />
+                                                                {user.deactivated_at ? 'Reactivate' : 'Deactivate'}
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
                                                                 onClick={() => setDeleteUser(user)}
                                                                 className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
                                                             >
@@ -469,6 +459,42 @@ export default function Index({ users }: Props) {
                                                     )}
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-3">
+                                                <UserAvatar name={user.name} role={user.role} />
+                                                <div className="min-w-0">
+                                                    <p className="font-medium text-gray-900 truncate">
+                                                        {user.name}
+                                                    </p>
+                                                    <p className="text-sm text-muted-foreground truncate">
+                                                        {user.email}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <RoleBadge role={user.role} />
+                                        </TableCell>
+                                        <TableCell className="text-sm" onClick={(e) => e.stopPropagation()}>
+                                            {user.company ? (
+                                                <Link href={`/clients/${user.company.uuid}`} className="hover:underline">
+                                                    {user.company.name}
+                                                </Link>
+                                            ) : (
+                                                <span className="text-muted-foreground">
+                                                    {user.role === 'admin' || user.role === 'super_admin' ? 'All companies' : 'Unassigned'}
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            <StatusBadge user={user} />
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                                <Calendar className="h-3.5 w-3.5" />
+                                                {formatDate(user.created_at)}
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))

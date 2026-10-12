@@ -15,6 +15,8 @@ import AppLayout from '@/layouts/app-layout'
 import KanbanBoard from '@/components/kanban-board'
 import { SearchableSelect } from '@/components/searchable-select'
 import type { User } from '@/types'
+import { isIssueOverdue } from '@/lib/utils'
+import { IssueTypeBadge } from '@/components/issue-type-badge'
 
 interface Label {
   id: number
@@ -32,7 +34,8 @@ interface Report {
   status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'reopened'
   due_date?: string | null
   priority: 'low' | 'medium' | 'high' | 'urgent'
-  severity?: 'trivial' | 'minor' | 'major' | 'critical'
+  type?: 'bug' | 'feature'
+  severity?: 'trivial' | 'minor' | 'major' | 'critical' | null
   reporter: { id: number; name: string; email: string }
   assignee?: { id: number; name: string; email: string }
   labels?: Label[]
@@ -56,7 +59,7 @@ interface Project {
 
 interface PageProps extends Record<string, unknown> {
   auth: {
-    user: User & { role: 'client' | 'admin' | 'super_admin' | 'manager' | 'developer' }
+    user: User & { role: 'admin' | 'super_admin' | 'manager' | 'staff' }
   }
   projects: Project[]
   userRole: string
@@ -69,7 +72,7 @@ type StatKey = 'open' | 'in_progress' | 'resolved' | 'reopened' | 'overdue'
 const statCards: Array<{ key: StatKey; label: string; hint: string; icon: LucideIcon; color: string }> = [
   { key: 'open', label: 'Open', hint: 'Not yet started', icon: AlertCircle, color: 'text-blue-600 bg-blue-50' },
   { key: 'in_progress', label: 'In Progress', hint: 'Being worked on', icon: Clock, color: 'text-amber-600 bg-amber-50' },
-  { key: 'resolved', label: 'Resolved', hint: 'Waiting for client to confirm', icon: CheckCircle2, color: 'text-purple-600 bg-purple-50' },
+  { key: 'resolved', label: 'Resolved', hint: 'Waiting for the reporter or manager to confirm', icon: CheckCircle2, color: 'text-purple-600 bg-purple-50' },
   { key: 'reopened', label: 'Reopened', hint: 'Sent back, needs rework', icon: RotateCcw, color: 'text-red-600 bg-red-50' },
   { key: 'overdue', label: 'Overdue', hint: 'Past due date, still open', icon: AlarmClock, color: 'text-orange-600 bg-orange-50' },
 ]
@@ -127,7 +130,7 @@ const severityColors = {
   trivial: 'bg-gray-400 text-white'
 }
 
-type SortField = 'issue_key' | 'title' | 'project' | 'status' | 'priority' | 'severity' | 'due_date' | 'assignee' | 'created_at'
+type SortField = 'issue_key' | 'type' | 'title' | 'project' | 'status' | 'priority' | 'severity' | 'due_date' | 'assignee' | 'created_at'
 type SortOrder = 'asc' | 'desc'
 type ViewMode = 'list' | 'board'
 
@@ -216,10 +219,15 @@ export default function Dashboard() {
           aValue = priorityOrder[a.priority] || 0
           bValue = priorityOrder[b.priority] || 0
           break
+        case 'type':
+          aValue = a.type || 'bug'
+          bValue = b.type || 'bug'
+          break
         case 'severity':
           const severityOrder = { 'critical': 4, 'major': 3, 'minor': 2, 'trivial': 1 }
-          aValue = severityOrder[a.severity || 'minor'] || 0
-          bValue = severityOrder[b.severity || 'minor'] || 0
+          // Feature requests have no severity, so they sort below every bug
+          aValue = a.severity ? severityOrder[a.severity] : 0
+          bValue = b.severity ? severityOrder[b.severity] : 0
           break
         case 'due_date':
           aValue = a.due_date ? new Date(a.due_date).getTime() : 0
@@ -312,17 +320,17 @@ export default function Dashboard() {
             </div>
 
             {/* Create Button */}
-            {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'manager' ||
-              (userRole === 'client' && activeProjects.length > 0) ||
-              (userRole === 'developer' && activeProjects.length > 0)) && (
+            {activeProjects.length > 0 && (
               <Button onClick={() => router.get('/reports/create')} className="shadow-sm">
                 <Plus className="w-4 h-4 mr-2" />
                 Create Issue
               </Button>
             )}
-            {(userRole === 'client' || userRole === 'developer') && activeProjects.length === 0 && (
+            {activeProjects.length === 0 && (
               <p className="max-w-56 text-right text-xs text-muted-foreground">
-                You have no active projects, so you can't create issues yet. Ask your administrator to assign or reopen one.
+                {userRole === 'staff'
+                  ? "You have no active projects, so you can't create issues yet. Ask your manager to assign you to one."
+                  : 'There are no active projects yet. Create or reopen a project to raise issues in it.'}
               </p>
             )}
           </div>
@@ -574,7 +582,7 @@ export default function Dashboard() {
                 ? 'No issues match these filters. Try clearing a filter or picking another card.'
                 : 'Get started by creating your first issue.'}
             </p>
-            {(userRole !== 'client' || activeProjects.length > 0) && (
+            {activeProjects.length > 0 && (
               <Button onClick={() => router.get('/reports/create')}>
                 <Plus className="w-4 h-4 mr-2" />
                 Create Issue
@@ -585,7 +593,7 @@ export default function Dashboard() {
           <KanbanBoard
             reports={filteredReports}
             onlyStatus={filters.status !== 'all' ? filters.status as Report['status'] : null}
-            canDrag={['super_admin', 'admin', 'manager', 'developer'].includes(userRole)}
+            canDrag
             onMoved={() => {
               fetchReports()
               router.reload({ only: ['stats'] })
@@ -604,6 +612,16 @@ export default function Dashboard() {
                     >
                       Key
                       {getSortIcon('issue_key')}
+                    </Button>
+                  </TableHead>
+                  <TableHead className="w-28">
+                    <Button
+                      variant="ghost"
+                      className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
+                      onClick={() => handleSort('type')}
+                    >
+                      Type
+                      {getSortIcon('type')}
                     </Button>
                   </TableHead>
                   <TableHead>
@@ -673,7 +691,7 @@ export default function Dashboard() {
                   const status = statusConfig[report.status]
                   const priority = priorityConfig[report.priority]
                   const PriorityIcon = priority?.icon || Info
-                  const isOverdue = report.due_date && new Date(report.due_date) < new Date() && report.status !== 'closed'
+                  const isOverdue = isIssueOverdue(report.due_date, report.status)
 
                   return (
                     <TableRow
@@ -685,6 +703,9 @@ export default function Dashboard() {
                         <span className="font-mono text-sm text-blue-600 hover:underline">
                           {report.issue_key || `#${report.id}`}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        <IssueTypeBadge type={report.type} />
                       </TableCell>
                       <TableCell>
                         <div className="max-w-md">

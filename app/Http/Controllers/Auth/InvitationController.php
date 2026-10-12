@@ -65,6 +65,11 @@ class InvitationController extends Controller
      */
     private function redirectIfAlreadySetUp(User $user): ?RedirectResponse
     {
+        if (!$user->isActive()) {
+            return redirect()->route('login')
+                ->with('status', \App\Http\Middleware\EnsureUserIsActive::MESSAGE);
+        }
+
         if ($user->email_verified_at === null) {
             return null;
         }

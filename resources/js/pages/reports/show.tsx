@@ -5,17 +5,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import {
-  ArrowLeft, FileImage, User, Calendar, MessageCircle, Edit2, CheckCircle2,
-  Clock, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X,
-  AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Settings,
-  Bug, Sparkles, Play, Gauge, AlertOctagon, ChevronLeft, ChevronRight, Download,
-  Upload, Loader2, ChevronDown, UserPlus
-} from 'lucide-react'
+import { ArrowLeft, FileImage, User, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ChevronDown, UserPlus, Pencil } from 'lucide-react'
+import { DatePicker } from '@/components/ui/date-picker'
 import AppLayout from '@/layouts/app-layout'
 import { getCsrfToken } from '@/lib/csrf'
 import { flashError, flashSuccess } from '@/lib/flash'
 import { goBack } from '@/lib/navigation'
+import { isIssueOverdue } from '@/lib/utils'
 
 interface ReportLabel {
   id: number
@@ -38,27 +34,6 @@ interface ReportLink {
   source_report?: { id: number; uuid: string; title: string; status: string; priority: string }
 }
 
-interface SlaInfo {
-  targets: {
-    response_hours: number
-    resolution_hours: number
-  }
-  response: {
-    status: 'breached' | 'at_risk' | 'on_track' | 'met'
-    responded_at: string | null
-    deadline: string
-    time_remaining_minutes: number | null
-    breached: boolean
-  }
-  resolution: {
-    status: 'breached' | 'at_risk' | 'on_track' | 'met' | 'paused'
-    resolved_at: string | null
-    deadline: string
-    time_remaining_minutes: number | null
-    breached: boolean
-  }
-}
-
 interface Report {
   id: number
   uuid: string
@@ -72,7 +47,8 @@ interface Report {
   assignee?: { id: number; name: string; email: string; role: string }
   due_date?: string | null
   priority: 'low' | 'medium' | 'high' | 'urgent'
-  severity?: 'critical' | 'major' | 'minor' | 'trivial'
+  type?: 'bug' | 'feature'
+  severity?: 'critical' | 'major' | 'minor' | 'trivial' | null
   estimated_hours?: number | null
   total_time_spent?: number
   labels?: ReportLabel[]
@@ -94,7 +70,7 @@ interface Report {
   }>
   activityLogs?: ActivityLog[]
   resolution_summary?: string
-  sla?: SlaInfo
+  resolved_by?: number | null
   created_at: string
   updated_at: string
 }
@@ -122,6 +98,7 @@ const FIELD_LABELS: Record<string, string> = {
   description: 'Description',
   due_date: 'Due date',
   priority: 'Priority',
+  type: 'Type',
   severity: 'Severity',
   estimated_hours: 'Estimated hours',
   status: 'Status'
@@ -231,10 +208,16 @@ const describeLog = (log: ActivityLog): Pick<TimelineEntry, 'summary' | 'details
 
 interface PageProps extends Record<string, unknown> {
   report: Report
-  userRole: 'client' | 'admin' | 'super_admin' | 'manager' | 'developer'
+  userRole: 'admin' | 'super_admin' | 'manager' | 'staff'
   userId: number
-  canReview: boolean
+  abilities: Abilities
 }
+
+/** What the server says this user may do with the issue right now. */
+type Abilities = Record<
+  'view' | 'start_progress' | 'resolve' | 'reopen_work' | 'confirm' | 'close' | 'reopen' | 'edit' | 'assign' | 'comment' | 'delete',
+  boolean
+>
 
 const statusConfig = {
   open: { label: 'Open', bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500', iconBg: 'bg-blue-50', iconColor: 'text-blue-600' },
@@ -258,55 +241,43 @@ const severityConfig = {
   trivial: { label: 'Trivial', bg: 'bg-gray-400', text: 'text-white' },
 }
 
+// The Edit Issue form's starting values for an issue
+const editDataFor = (report: Report) => ({
+  title: report.title,
+  description: report.description,
+  priority: report.priority,
+  type: (report.type || 'bug') as 'bug' | 'feature',
+  // Empty for a feature: the server then restores the severity it had as a bug, or uses Minor
+  severity: (report.severity || '') as string,
+  // Dates arrive as a full timestamp; the form works with the day only
+  due_date: report.due_date ? String(report.due_date).slice(0, 10) : '',
+})
+
+// What the Edit Issue form sends: severity only for bugs, and only when one is chosen
+const editPayload = ({ severity, ...data }: ReturnType<typeof editDataFor>) => ({
+  ...data,
+  due_date: data.due_date || null,
+  ...(data.type === 'bug' && severity ? { severity } : {}),
+})
+
 const roleColors: Record<string, string> = {
   super_admin: 'bg-gradient-to-br from-red-500 to-rose-600',
   admin: 'bg-gradient-to-br from-blue-500 to-indigo-600',
   manager: 'bg-gradient-to-br from-purple-500 to-violet-600',
-  developer: 'bg-gradient-to-br from-emerald-500 to-teal-600',
-  client: 'bg-gradient-to-br from-amber-500 to-orange-600',
+  staff: 'bg-gradient-to-br from-emerald-500 to-teal-600',
 }
 
 const roleBadgeColors: Record<string, string> = {
   super_admin: 'bg-red-100 text-red-700',
   admin: 'bg-blue-100 text-blue-700',
   manager: 'bg-purple-100 text-purple-700',
-  developer: 'bg-emerald-100 text-emerald-700',
-  client: 'bg-amber-100 text-amber-700',
-}
-
-const slaStatusConfig = {
-  breached: { label: 'Breached', bg: 'bg-red-100', text: 'text-red-700', icon: AlertOctagon, iconColor: 'text-red-600' },
-  at_risk: { label: 'At Risk', bg: 'bg-amber-100', text: 'text-amber-700', icon: AlertTriangle, iconColor: 'text-amber-600' },
-  on_track: { label: 'On Track', bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2, iconColor: 'text-green-600' },
-  met: { label: 'Met', bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2, iconColor: 'text-green-600' },
-  paused: { label: 'Paused', bg: 'bg-gray-100', text: 'text-gray-700', icon: Clock, iconColor: 'text-gray-600' },
-}
-
-// Format time remaining
-function formatTimeRemaining(minutes: number | null): string {
-  if (minutes === null) return '-'
-
-  const absMinutes = Math.abs(minutes)
-  const isOverdue = minutes < 0
-
-  if (absMinutes < 60) {
-    return `${isOverdue ? '-' : ''}${absMinutes}m`
-  }
-
-  const hours = Math.floor(absMinutes / 60)
-  const mins = absMinutes % 60
-
-  if (hours < 24) {
-    return `${isOverdue ? '-' : ''}${hours}h ${mins}m`
-  }
-
-  const days = Math.floor(hours / 24)
-  const remainingHours = hours % 24
-  return `${isOverdue ? '-' : ''}${days}d ${remainingHours}h`
+  staff: 'bg-emerald-100 text-emerald-700',
 }
 
 export default function ReportShow() {
-  const { report: initialReport, userRole, userId, canReview } = usePage<PageProps>().props
+  const { report: initialReport, userRole, userId, abilities: initialAbilities } = usePage<PageProps>().props
+  // Permissions come from the server and are refreshed after every action, because they depend on the status
+  const [abilities, setAbilities] = useState<Abilities>(initialAbilities)
   const [report, setReport] = useState<Report>(initialReport)
   const [loading, setLoading] = useState(false)
   const [newComment, setNewComment] = useState('')
@@ -318,13 +289,7 @@ export default function ReportShow() {
   const [showReopenModal, setShowReopenModal] = useState(false)
   const [resolutionSummary, setResolutionSummary] = useState('')
   const [reopenReason, setReopenReason] = useState('')
-  const [editData, setEditData] = useState({
-    title: report.title,
-    description: report.description,
-    priority: report.priority,
-    severity: report.severity || 'minor',
-    due_date: report.due_date || '',
-  })
+  const [editData, setEditData] = useState(() => editDataFor(report))
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const [uploading, setUploading] = useState(false)
@@ -355,13 +320,15 @@ export default function ReportShow() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [lightboxOpen, imageAttachments.length])
 
-  const canAssign = userRole === 'admin' || userRole === 'super_admin' || userRole === 'manager'
+  const canAssign = abilities.assign
 
   // Fetch team members for assignment
   useEffect(() => {
     const fetchTeamMembers = async () => {
       try {
-        const response = await fetch('/api/team-members', { credentials: 'same-origin' })
+        // Only people who can work on this issue: admins, the company's manager, and staff on its project
+        const query = report.project_id ? `?project_id=${report.project_id}` : ''
+        const response = await fetch(`/api/team-members${query}`, { credentials: 'same-origin' })
         if (response.ok) {
           const data = await response.json()
           setTeamMembers(data)
@@ -403,21 +370,24 @@ export default function ReportShow() {
   const projectPrefix = typeof report.project === 'object' ? report.project?.prefix : null
   const status = statusConfig[report.status] || statusConfig.open
   const priority = priorityConfig[report.priority] || priorityConfig.medium
+  // Only bugs have a severity; a feature request shows its type instead
+  const isFeature = report.type === 'feature'
   const severity = severityConfig[report.severity || 'minor']
   const PriorityIcon = priority.icon
 
   // Permissions
-  const isTeamMember = ['admin', 'super_admin', 'manager', 'developer'].includes(userRole)
-  const isReporter = Number(report.reporter.id) === Number(userId)
-  const canStartProgress = isTeamMember && (report.status === 'open' || report.status === 'reopened')
-  const canResolve = isTeamMember && report.status === 'in_progress'
-  // Resolved means "waiting for the client": a reviewing client confirms the fix (closes it) or rejects it (reopens it)
+  const canStartProgress = abilities.start_progress
+  const canResolve = abilities.resolve
+  // Resolved means "waiting for review": the reporter or the manager confirms the fix or rejects it.
+  // Whoever resolved the issue cannot confirm their own fix.
   const awaitingReview = report.status === 'resolved'
-  const canConfirmFix = awaitingReview && canReview
-  const canClose = (report.status === 'resolved' && isTeamMember) || (report.status === 'open' && (isTeamMember || (userRole === 'client' && isReporter)))
-  const canReopen = (report.status === 'closed' && (isTeamMember || canReview)) || (report.status === 'resolved' && isTeamMember)
-  const canEdit = isTeamMember || (userRole === 'client' && isReporter && report.status === 'open')
-  const canComment = isTeamMember || (userRole === 'client' && isReporter)
+  const canConfirmFix = abilities.confirm
+  const resolvedByMe = awaitingReview && Number(report.resolved_by) === Number(userId)
+  const canClose = abilities.close
+  // On a resolved issue "Not Fixed" sits in the review banner; show the plain button otherwise
+  const canReopen = abilities.reopen && !(awaitingReview && canConfirmFix)
+  const canEdit = abilities.edit
+  const canComment = abilities.comment
 
   const handleAction = async (action: string, data?: Record<string, any>) => {
     setLoading(true)
@@ -447,18 +417,13 @@ export default function ReportShow() {
       if (response.ok) {
         flashSuccess(result.message, 'Issue updated successfully.')
         setReport(result.report)
+        if (result.abilities) setAbilities(result.abilities)
         setIsEditing(false)
         setShowResolveModal(false)
         setShowReopenModal(false)
         setResolutionSummary('')
         setReopenReason('')
-        setEditData({
-          title: result.report.title,
-          description: result.report.description,
-          priority: result.report.priority,
-          severity: result.report.severity || 'minor',
-          due_date: result.report.due_date || '',
-        })
+        setEditData(editDataFor(result.report))
       } else {
         flashError(result.message || 'Action failed')
       }
@@ -511,6 +476,7 @@ export default function ReportShow() {
       if (response.ok) {
         flashSuccess(result.message, 'Attachments uploaded successfully.')
         setReport(result.report)
+        if (result.abilities) setAbilities(result.abilities)
       } else {
         flashError(result.message || 'Failed to upload attachments')
       }
@@ -537,7 +503,7 @@ export default function ReportShow() {
     return formatDate(date)
   }
 
-  const isOverdue = report.due_date && new Date(report.due_date) < new Date() && report.status !== 'closed'
+  const isOverdue = isIssueOverdue(report.due_date, report.status)
 
   // Everything that happened to this issue, newest first: creation, status changes, edits and comments
   const activityLogs = report.activityLogs ?? []
@@ -652,7 +618,7 @@ export default function ReportShow() {
             )}
             {canEdit && (
               <Button variant="outline" onClick={() => setIsEditing(!isEditing)}>
-                {isEditing ? <X className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                {isEditing ? <X className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
               </Button>
             )}
           </div>
@@ -674,21 +640,25 @@ export default function ReportShow() {
                 )}
               </div>
               <div className="flex shrink-0 gap-2">
-                <Button onClick={() => handleAction('close')} disabled={loading}>
+                <Button onClick={() => handleAction('close')} disabled={loading} className="bg-purple-600 text-white hover:bg-purple-700">
                   <CheckCircle2 className="w-4 h-4 mr-2" />
                   Confirm Fixed
                 </Button>
-                <Button onClick={() => setShowReopenModal(true)} disabled={loading} variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-50 hover:text-red-800">
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Not Fixed
-                </Button>
+                {abilities.reopen && (
+                  <Button onClick={() => setShowReopenModal(true)} disabled={loading} variant="outline" className="border-purple-300 bg-white text-purple-800 hover:bg-purple-100 hover:text-purple-900">
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Not Fixed
+                  </Button>
+                )}
               </div>
             </div>
           </div>
         )}
         {awaitingReview && !canConfirmFix && (
           <div className="rounded-xl border border-purple-200 bg-purple-50 px-5 py-3 text-sm text-purple-800">
-            Resolved and waiting for the client to review. It will be closed once the client confirms the fix.
+            {resolvedByMe
+              ? 'You resolved this issue, so someone else has to confirm the fix: the person who reported it, or the manager.'
+              : 'Resolved and waiting for review. It will be closed once the reporter or the manager confirms the fix.'}
           </div>
         )}
 
@@ -707,13 +677,27 @@ export default function ReportShow() {
           </div>
           <div className="bg-white border rounded-xl p-4">
             <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-lg ${severity.bg}`}>
-                <AlertTriangle className={`w-5 h-5 ${severity.text}`} />
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Severity</p>
-                <p className="text-lg font-semibold text-gray-900">{severity.label}</p>
-              </div>
+              {isFeature ? (
+                <>
+                  <div className="p-2.5 rounded-lg bg-purple-50">
+                    <Sparkles className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Type</p>
+                    <p className="text-lg font-semibold text-gray-900">Feature</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={`p-2.5 rounded-lg ${severity.bg}`}>
+                    <AlertTriangle className={`w-5 h-5 ${severity.text}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Severity</p>
+                    <p className="text-lg font-semibold text-gray-900">{severity.label}</p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="bg-white border rounded-xl p-4">
@@ -760,6 +744,81 @@ export default function ReportShow() {
               <div className="p-5">
                 {isEditing ? (
                   <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-issue-type">Type</Label>
+                        <Select value={editData.type} onValueChange={(type: 'bug' | 'feature') => setEditData(prev => ({ ...prev, type }))}>
+                          <SelectTrigger id="edit-issue-type">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="bug">Bug</SelectItem>
+                            <SelectItem value="feature">Feature</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-issue-priority">Priority</Label>
+                        <Select value={editData.priority} onValueChange={(priority: Report['priority']) => setEditData(prev => ({ ...prev, priority }))}>
+                          <SelectTrigger id="edit-issue-priority">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(['low', 'medium', 'high', 'urgent'] as const).map(value => (
+                              <SelectItem key={value} value={value}>{priorityConfig[value].label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {/* Severity describes how badly something is broken, so only bugs have one */}
+                      {editData.type === 'bug' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-issue-severity">Severity</Label>
+                          <Select value={editData.severity || undefined} onValueChange={(severity) => setEditData(prev => ({ ...prev, severity }))}>
+                            <SelectTrigger id="edit-issue-severity">
+                              <SelectValue placeholder="Previous severity, or Minor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(['trivial', 'minor', 'major', 'critical'] as const).map(value => (
+                                <SelectItem key={value} value={value}>{severityConfig[value].label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-issue-due-date">Due Date</Label>
+                        <div className="flex items-center gap-2">
+                          <DatePicker
+                            id="edit-issue-due-date"
+                            value={editData.due_date}
+                            onChange={(due_date) => setEditData(prev => ({ ...prev, due_date }))}
+                            placeholder="Not set"
+                            displayFormat="d MMM yyyy"
+                            className="min-w-0 flex-1"
+                          />
+                          {editData.due_date && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label="Clear due date"
+                              onClick={() => setEditData(prev => ({ ...prev, due_date: '' }))}
+                              className="h-9 px-2 text-gray-500 hover:text-gray-700"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {editData.type !== (report.type || 'bug') && (
+                      <p className="text-xs text-gray-500">
+                        {editData.type === 'feature'
+                          ? 'Features have no severity. The current severity is kept in case this becomes a bug again.'
+                          : 'Leave Severity unchosen to restore the one it had as a bug, or Minor if it never had one.'}
+                      </p>
+                    )}
                     <Textarea
                       value={editData.description}
                       onChange={(e) => setEditData(prev => ({ ...prev, description: e.target.value }))}
@@ -767,18 +826,12 @@ export default function ReportShow() {
                       className="font-mono text-sm"
                     />
                     <div className="flex gap-2">
-                      <Button onClick={() => handleAction('update_report', editData)} disabled={loading}>
+                      <Button onClick={() => handleAction('update_report', editPayload(editData))} disabled={loading}>
                         {loading ? 'Saving...' : 'Save Changes'}
                       </Button>
                       <Button variant="outline" onClick={() => {
                         setIsEditing(false)
-                        setEditData({
-                          title: report.title,
-                          description: report.description,
-                          priority: report.priority,
-                          severity: report.severity || 'minor',
-                          due_date: report.due_date || '',
-                        })
+                        setEditData(editDataFor(report))
                       }}>
                         Cancel
                       </Button>
@@ -926,14 +979,14 @@ export default function ReportShow() {
                   <div className="space-y-4 mb-6">
                     {report.comments.map((comment) => (
                       <div key={comment.id} className="flex gap-3">
-                        <div className={`w-8 h-8 rounded-full ${roleColors[comment.user.role] || roleColors.client} flex items-center justify-center text-white text-xs font-medium flex-shrink-0`}>
+                        <div className={`w-8 h-8 rounded-full ${roleColors[comment.user.role] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium flex-shrink-0`}>
                           {comment.user.name.charAt(0)}
                         </div>
                         <div className="flex-1 bg-gray-50 rounded-lg p-3">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-sm text-gray-900">{comment.user.name}</span>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded ${roleBadgeColors[comment.user.role] || roleBadgeColors.client}`}>
-                              {(comment.user.role || 'client').replace('_', ' ')}
+                              {(comment.user.role || 'staff').replace('_', ' ')}
                             </span>
                             <span className="text-xs text-gray-400">{timeAgo(comment.created_at)}</span>
                           </div>
@@ -946,7 +999,7 @@ export default function ReportShow() {
 
                 {canComment && (
                   <div className="flex gap-3">
-                    <div className={`w-8 h-8 rounded-full ${roleColors[userRole] || roleColors.client} flex items-center justify-center text-white text-xs font-medium flex-shrink-0`}>
+                    <div className={`w-8 h-8 rounded-full ${roleColors[userRole] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium flex-shrink-0`}>
                       {userRole.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1">
@@ -994,7 +1047,7 @@ export default function ReportShow() {
                       >
                         {report.assignee ? (
                           <>
-                            <div className={`w-8 h-8 rounded-full ${roleColors[report.assignee.role] || roleColors.client} flex items-center justify-center text-white text-xs font-medium`}>
+                            <div className={`w-8 h-8 rounded-full ${roleColors[report.assignee.role] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium`}>
                               {report.assignee.name.charAt(0)}
                             </div>
                             <div className="flex-1 min-w-0">
@@ -1019,7 +1072,7 @@ export default function ReportShow() {
                     ) : (
                       report.assignee ? (
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full ${roleColors[report.assignee.role] || roleColors.client} flex items-center justify-center text-white text-xs font-medium`}>
+                          <div className={`w-8 h-8 rounded-full ${roleColors[report.assignee.role] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium`}>
                             {report.assignee.name.charAt(0)}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -1062,7 +1115,7 @@ export default function ReportShow() {
                               report.assignee?.id === member.id ? 'bg-blue-50' : ''
                             }`}
                           >
-                            <div className={`w-7 h-7 rounded-full ${roleColors[member.role] || roleColors.client} flex items-center justify-center text-white text-xs font-medium`}>
+                            <div className={`w-7 h-7 rounded-full ${roleColors[member.role] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium`}>
                               {member.name.charAt(0)}
                             </div>
                             <div className="flex-1 min-w-0 text-left">
@@ -1086,7 +1139,7 @@ export default function ReportShow() {
                 <div>
                   <p className="text-xs text-gray-400 mb-2">Reporter</p>
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full ${roleColors[report.reporter.role] || roleColors.client} flex items-center justify-center text-white text-xs font-medium`}>
+                    <div className={`w-8 h-8 rounded-full ${roleColors[report.reporter.role] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium`}>
                       {report.reporter.name.charAt(0)}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1094,83 +1147,12 @@ export default function ReportShow() {
                       <p className="text-xs text-gray-400 truncate">{report.reporter.email}</p>
                     </div>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${roleBadgeColors[report.reporter.role] || roleBadgeColors.client}`}>
-                      {(report.reporter.role || 'client').replace('_', ' ')}
+                      {(report.reporter.role || 'staff').replace('_', ' ')}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* SLA */}
-            {report.sla && (
-              <div className="bg-white border rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <Gauge className="w-4 h-4 text-gray-400" />
-                  <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">SLA</h3>
-                </div>
-                <div className="space-y-4">
-                  {/* Response SLA */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs text-gray-500">First Response</p>
-                      <span className="text-xs text-gray-400">{report.sla.targets.response_hours}h target</span>
-                    </div>
-                    {(() => {
-                      const config = slaStatusConfig[report.sla.response.status] || slaStatusConfig.on_track
-                      const Icon = config.icon
-                      return (
-                        <div className={`flex items-center justify-between p-2.5 rounded-lg ${config.bg}`}>
-                          <div className="flex items-center gap-2">
-                            <Icon className={`w-4 h-4 ${config.iconColor}`} />
-                            <span className={`text-sm font-medium ${config.text}`}>{config.label}</span>
-                          </div>
-                          {report.sla.response.time_remaining_minutes !== null && (
-                            <span className={`text-xs font-mono ${config.text}`}>
-                              {formatTimeRemaining(report.sla.response.time_remaining_minutes)}
-                            </span>
-                          )}
-                          {report.sla.response.responded_at && (
-                            <span className="text-xs text-gray-500">
-                              Responded
-                            </span>
-                          )}
-                        </div>
-                      )
-                    })()}
-                  </div>
-
-                  {/* Resolution SLA */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs text-gray-500">Resolution</p>
-                      <span className="text-xs text-gray-400">{report.sla.targets.resolution_hours}h target</span>
-                    </div>
-                    {(() => {
-                      const config = slaStatusConfig[report.sla.resolution.status] || slaStatusConfig.on_track
-                      const Icon = config.icon
-                      return (
-                        <div className={`flex items-center justify-between p-2.5 rounded-lg ${config.bg}`}>
-                          <div className="flex items-center gap-2">
-                            <Icon className={`w-4 h-4 ${config.iconColor}`} />
-                            <span className={`text-sm font-medium ${config.text}`}>{config.label}</span>
-                          </div>
-                          {report.sla.resolution.time_remaining_minutes !== null && (
-                            <span className={`text-xs font-mono ${config.text}`}>
-                              {formatTimeRemaining(report.sla.resolution.time_remaining_minutes)}
-                            </span>
-                          )}
-                          {report.sla.resolution.status === 'met' && (
-                            <span className="text-xs text-gray-500">
-                              Resolved
-                            </span>
-                          )}
-                        </div>
-                      )
-                    })()}
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Linked Issues */}
             {((report.outgoing_links && report.outgoing_links.length > 0) || (report.incoming_links && report.incoming_links.length > 0)) && (
@@ -1212,7 +1194,7 @@ export default function ReportShow() {
                     {index < timeline.length - 1 && (
                       <span className="absolute left-2.5 top-6 bottom-0 w-px bg-border" aria-hidden="true" />
                     )}
-                    <div className={`relative z-10 w-5 h-5 rounded-full ${roleColors[entry.user?.role || 'client'] || roleColors.client} flex items-center justify-center text-white text-[8px] font-medium flex-shrink-0 mt-0.5`}>
+                    <div className={`relative z-10 w-5 h-5 rounded-full ${roleColors[entry.user?.role || 'staff'] || roleColors.staff} flex items-center justify-center text-white text-[8px] font-medium flex-shrink-0 mt-0.5`}>
                       {(entry.user?.name ?? '?').charAt(0)}
                     </div>
                     <div className="flex-1 min-w-0">

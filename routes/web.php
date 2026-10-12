@@ -17,6 +17,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // User Management (Super Admin & Admin only)
     Route::resource('users', App\Http\Controllers\UserController::class);
     Route::post('/users/{user}/invitation', [App\Http\Controllers\UserController::class, 'resendInvitation'])->name('users.invitation.resend');
+    Route::post('/users/{user}/deactivate', [App\Http\Controllers\UserController::class, 'deactivate'])->name('users.deactivate');
+    Route::post('/users/{user}/reactivate', [App\Http\Controllers\UserController::class, 'reactivate'])->name('users.reactivate');
+
+    // Client companies: admins manage all of them, a manager can open only their own
+    Route::get('/my-company', [App\Http\Controllers\CompanyController::class, 'mine'])->name('clients.mine');
+    Route::get('/clients', [App\Http\Controllers\CompanyController::class, 'index'])->name('clients.index');
+    Route::post('/clients', [App\Http\Controllers\CompanyController::class, 'store'])->name('clients.store');
+    Route::get('/clients/{company}', [App\Http\Controllers\CompanyController::class, 'show'])->name('clients.show');
+    Route::patch('/clients/{company}', [App\Http\Controllers\CompanyController::class, 'update'])->name('clients.update');
+
+    // Staff of a client company, managed by its manager or an admin
+    Route::post('/clients/{company}/staff', [App\Http\Controllers\StaffController::class, 'store'])->name('clients.staff.store');
+    Route::patch('/clients/{company}/staff/{user}', [App\Http\Controllers\StaffController::class, 'update'])->name('clients.staff.update');
+    Route::post('/clients/{company}/staff/{user}/deactivate', [App\Http\Controllers\StaffController::class, 'deactivate'])->name('clients.staff.deactivate');
+    Route::post('/clients/{company}/staff/{user}/reactivate', [App\Http\Controllers\StaffController::class, 'reactivate'])->name('clients.staff.reactivate');
+    Route::post('/clients/{company}/staff/{user}/invitation', [App\Http\Controllers\StaffController::class, 'resendInvitation'])->name('clients.staff.invitation');
     
     // Project Management (Super Admin & Admin only)
     Route::resource('projects', App\Http\Controllers\ProjectController::class)->except(['edit', 'update']);

@@ -10,13 +10,15 @@ import { ArrowLeft } from 'lucide-react';
 
 interface Props {
     availableRoles: { value: string; label: string }[];
+    companies: { id: number; name: string }[];
 }
 
-export default function Create({ availableRoles }: Props) {
+export default function Create({ availableRoles, companies }: Props) {
     const { csrfToken } = usePage().props as { csrfToken: string };
     const { data, setData, post, processing, errors } = useForm({
         email: '',
-        role: availableRoles.length > 0 ? availableRoles[0].value : 'client'
+        role: availableRoles.length > 0 ? availableRoles[0].value : 'staff',
+        company_id: ''
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -35,7 +37,7 @@ export default function Create({ availableRoles }: Props) {
             onError: (errors) => {
                 console.error('Form submission errors:', errors);
                 // Field errors show under their field; anything else is shown as a flash message
-                const general = Object.entries(errors).filter(([key]) => !['email', 'role'].includes(key));
+                const general = Object.entries(errors).filter(([key]) => !['email', 'role', 'company_id'].includes(key));
                 if (general.some(([, message]) => String(message).includes('419'))) {
                     flashError('Session expired. Please refresh the page and try again.');
                 } else if (general.length > 0) {
@@ -108,6 +110,31 @@ export default function Create({ availableRoles }: Props) {
                             </p>
                         </div>
 
+                        {data.role === 'staff' && (
+                            <div className="space-y-2">
+                                <Label htmlFor="company_id">Client company</Label>
+                                <Select value={data.company_id} onValueChange={(value) => setData('company_id', value)}>
+                                    <SelectTrigger id="company_id">
+                                        <SelectValue placeholder="Select a client company" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {companies.map((company) => (
+                                            <SelectItem key={company.id} value={String(company.id)}>
+                                                {company.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.company_id} />
+                                <p className="text-sm text-gray-600">Staff belong to exactly one client company.</p>
+                            </div>
+                        )}
+                        {data.role === 'manager' && (
+                            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                                A new manager has no company yet. Put them in charge of one from the Clients page.
+                            </p>
+                        )}
+
                         <div className="flex justify-end gap-3 pt-6">
                             <Link href="/users">
                                 <Button variant="outline">
@@ -124,11 +151,10 @@ export default function Create({ availableRoles }: Props) {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h3 className="font-medium text-blue-900 mb-2">Role Permissions</h3>
                     <div className="text-sm text-blue-800 space-y-1">
-                        <div><strong>Client:</strong> Can create and view their own issues</div>
-                        <div><strong>Developer:</strong> Can be assigned to issues and track time</div>
-                        <div><strong>Manager:</strong> Can manage projects and assign developers</div>
-                        <div><strong>Admin:</strong> Can manage users and all system functions</div>
-                        <div><strong>Super Admin:</strong> Can manage all users including admin accounts</div>
+                        <div><strong>Staff:</strong> Belongs to one client company; creates and works on issues in the projects they are assigned to</div>
+                        <div><strong>Manager:</strong> Runs one client company: its projects and issues, and assigns its staff to projects</div>
+                        <div><strong>Admin:</strong> Manages every client company, user, project and issue</div>
+                        <div><strong>Super Admin:</strong> Everything an admin can do, plus creating other admins</div>
                     </div>
                 </div>
             </div>

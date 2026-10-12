@@ -28,22 +28,36 @@ Route::middleware('auth')->group(function () {
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     
-    Route::get('/developers', function () {
-        return \App\Models\User::where('role', 'admin')
-            ->select('id', 'name', 'email')
-            ->get();
-    });
-
     // Get assignable team members (admins, managers, developers)
-    Route::get('/team-members', function () {
-        return \App\Models\User::whereIn('role', ['admin', 'super_admin', 'manager', 'developer'])
+    // People an issue in the given project can be assigned to: admins, the company's
+    // manager, and the staff assigned to that project
+    Route::get('/team-members', function (Request $request) {
+        $project = \App\Models\Project::find($request->query('project_id'));
+
+        if (!$project || !$project->isVisibleTo($request->user())) {
+            return response()->json([]);
+        }
+
+        return \App\Models\User::whereNull('deactivated_at')
+            ->where(function ($query) use ($project) {
+                $query->whereIn('role', ['admin', 'super_admin'])
+                    ->orWhere(function ($manager) use ($project) {
+                        $manager->where('role', 'manager')->where('company_id', $project->company_id);
+                    })
+                    ->orWhere(function ($staff) use ($project) {
+                        $staff->where('role', 'staff')->whereIn('id', function ($members) use ($project) {
+                            $members->select('user_id')->from('project_users')->where('project_id', $project->id);
+                        });
+                    });
+            })
             ->select('id', 'name', 'email', 'role')
             ->orderBy('name')
             ->get();
     });
-    
-    Route::get('/projects', function () {
-        return \App\Models\Project::whereHas('reports')
+
+    Route::get('/projects', function (Request $request) {
+        return \App\Models\Project::visibleTo($request->user())
+            ->whereHas('reports')
             ->orderBy('name')
             ->pluck('name');
     });
@@ -67,11 +81,19 @@ Route::middleware('auth')->group(function () {
 
     // Report Labels (attach/detach)
     Route::post('/reports/{report}/labels', function (\Illuminate\Http\Request $request, \App\Models\Report $report) {
+        abort_unless($report->isVisibleTo($request->user()), 403, 'Unauthorized');
+
         $validated = $request->validate([
             'label_ids' => 'required|array',
             'label_ids.*' => 'exists:labels,id',
         ]);
-        $report->labels()->sync($validated['label_ids']);
+
+        // Only labels that belong to the report's own project can be attached
+        $labelIds = \App\Models\Label::whereIn('id', $validated['label_ids'])
+            ->where('project_id', $report->project_id)
+            ->pluck('id')
+            ->all();
+        $report->labels()->sync($labelIds);
         return response()->json([
             'message' => 'Labels updated successfully.',
             'labels' => $report->labels,

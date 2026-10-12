@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\AuditLog;
+use App\Models\Company;
 use App\Models\Project;
 use App\Models\Report;
 use App\Models\ReportComment;
@@ -12,6 +13,7 @@ use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -30,6 +32,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Never allow a wipe or reset of the production database (migrate:fresh, migrate:refresh, db:wipe ...)
+        DB::prohibitDestructiveCommands($this->app->isProduction());
+
         $this->registerAuditLogging();
 
         // An invited user who sets their password through "Forgot password" has also finished setting up
@@ -49,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
         Project::observe(AuditObserver::class);
         Report::observe(AuditObserver::class);
         ReportComment::observe(AuditObserver::class);
+        Company::observe(AuditObserver::class);
 
         Event::listen(function (Login $event) {
             AuditLog::record('auth.login', 'Logged in', 'user', $event->user->getAuthIdentifier(), $event->user->email, null, $event->user);

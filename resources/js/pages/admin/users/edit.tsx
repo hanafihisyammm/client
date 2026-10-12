@@ -19,16 +19,24 @@ interface User {
 }
 
 interface Props {
-    user: User;
+    user: User & { company_id?: number | null };
+    companies: { id: number; name: string }[];
 }
 
-export default function Edit({ user }: Props) {
+const ROLE_LABELS: Record<string, string> = {
+    super_admin: 'Super Admin',
+    admin: 'Admin',
+    manager: 'Manager',
+    staff: 'Staff',
+};
+
+export default function Edit({ user, companies }: Props) {
     const { data, setData, put, processing, errors, setError, clearErrors } = useForm({
         name: user.name,
         email: user.email,
         password: '',
         password_confirmation: '',
-        role: user.role
+        company_id: user.company_id ? String(user.company_id) : ''
     });
     
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -153,24 +161,34 @@ export default function Edit({ user }: Props) {
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="role">User Role</Label>
-                            <Select
-                                value={data.role}
-                                onValueChange={(value) => setData('role', value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select a role" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="client">Client</SelectItem>
-                                    <SelectItem value="admin">Admin</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <InputError message={errors.role} />
+                            <Label>User Role</Label>
+                            <p className="rounded-md border bg-gray-50 px-3 py-2 text-sm">{ROLE_LABELS[user.role] ?? user.role}</p>
                             <p className="text-sm text-gray-600">
-                                Choose the appropriate role for this user's access level
+                                The role cannot be changed here. A manager is put in charge of a company from the Clients page.
                             </p>
                         </div>
+
+                        {user.role === 'staff' && (
+                            <div className="space-y-2">
+                                <Label htmlFor="company_id">Client company</Label>
+                                <Select value={data.company_id} onValueChange={(value) => setData('company_id', value)}>
+                                    <SelectTrigger id="company_id">
+                                        <SelectValue placeholder="Select a client company" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {companies.map((company) => (
+                                            <SelectItem key={company.id} value={String(company.id)}>
+                                                {company.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.company_id} />
+                                <p className="text-sm text-gray-600">
+                                    Moving staff to another company removes them from their current projects.
+                                </p>
+                            </div>
+                        )}
 
                         <div className="flex justify-end gap-3 pt-6">
                             <Link href="/users">
@@ -188,9 +206,9 @@ export default function Edit({ user }: Props) {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <h3 className="font-medium text-blue-900 mb-2">Role Permissions</h3>
                     <div className="text-sm text-blue-800 space-y-1">
-                        <div><strong>Client:</strong> Can create and view their own issues</div>
-                        <div><strong>Developer:</strong> Can manage issues and view project details</div>
-                        <div><strong>Admin:</strong> Can manage users and all system functions</div>
+                        <div><strong>Staff:</strong> Belongs to one client company; creates and works on issues in the projects they are assigned to</div>
+                        <div><strong>Manager:</strong> Runs one client company: its projects and issues, and assigns its staff to projects</div>
+                        <div><strong>Admin:</strong> Manages every client company, user, project and issue</div>
                     </div>
                 </div>
 

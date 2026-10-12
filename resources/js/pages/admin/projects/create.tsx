@@ -5,6 +5,7 @@ import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
     ArrowLeft, FolderKanban, Users, CheckCircle2, Clock, Archive,
@@ -19,7 +20,11 @@ interface User {
 }
 
 interface Props {
+    /** Staff who may be put on a project. Admins get every company's; the list below shows the chosen company's */
     clients: User[];
+    companies: { id: number; name: string }[];
+    /** Set for a manager, whose projects always belong to their own company */
+    fixedCompanyId: number | null;
 }
 
 const statusOptions = [
@@ -32,8 +37,7 @@ const roleColors: Record<string, string> = {
     super_admin: 'bg-gradient-to-br from-red-500 to-rose-600',
     admin: 'bg-gradient-to-br from-blue-500 to-indigo-600',
     manager: 'bg-gradient-to-br from-purple-500 to-violet-600',
-    developer: 'bg-gradient-to-br from-emerald-500 to-teal-600',
-    client: 'bg-gradient-to-br from-amber-500 to-orange-600',
+    staff: 'bg-gradient-to-br from-emerald-500 to-teal-600',
 };
 
 function generatePrefix(name: string): string {
@@ -45,13 +49,17 @@ function generatePrefix(name: string): string {
     return words.slice(0, 4).map(w => w[0]).join('').toUpperCase() || 'PROJ';
 }
 
-export default function ProjectCreate({ clients }: Props) {
+export default function ProjectCreate({ clients: allStaff, companies, fixedCompanyId }: Props) {
     const { data, setData, post, processing, errors } = useForm({
         name: '',
         description: '',
         status: 'active',
+        company_id: fixedCompanyId ? String(fixedCompanyId) : companies.length === 1 ? String(companies[0].id) : '',
         client_ids: [] as number[],
     });
+
+    // Only staff of the chosen company can be put on its projects
+    const clients = allStaff.filter(c => String((c as { company_id?: number }).company_id ?? '') === data.company_id);
 
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -84,8 +92,8 @@ export default function ProjectCreate({ clients }: Props) {
             flashError('Project name is required.');
             return;
         }
-        if (data.client_ids.length === 0) {
-            flashError('At least one member must be assigned.');
+        if (!data.company_id) {
+            flashError('Choose the client company this project belongs to.');
             return;
         }
         post('/projects');
@@ -182,6 +190,37 @@ export default function ProjectCreate({ clients }: Props) {
                                 </div>
                             </div>
 
+                            {/* Client company */}
+                            {!fixedCompanyId && (
+                                <div className="bg-white border rounded-xl p-6 space-y-3">
+                                    <Label htmlFor="company_id" className="text-sm font-medium text-gray-700">
+                                        Client company <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Select
+                                        value={data.company_id}
+                                        onValueChange={(value) => {
+                                            // Staff picked for another company must not carry over
+                                            setData((current) => ({ ...current, company_id: value, client_ids: [] }));
+                                        }}
+                                    >
+                                        <SelectTrigger id="company_id" className="h-11">
+                                            <SelectValue placeholder="Select a client company" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {companies.map((company) => (
+                                                <SelectItem key={company.id} value={String(company.id)}>
+                                                    {company.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.company_id && <p className="text-sm text-red-600">{errors.company_id}</p>}
+                                    <p className="text-sm text-gray-500">
+                                        The project, its staff and its issues will belong to this company only.
+                                    </p>
+                                </div>
+                            )}
+
                             {/* Team Members */}
                             <div className="bg-white border rounded-xl p-6 space-y-5">
                                 <div className="flex items-center justify-between pb-4 border-b">
@@ -190,8 +229,8 @@ export default function ProjectCreate({ clients }: Props) {
                                             <Users className="w-5 h-5 text-amber-600" />
                                         </div>
                                         <div>
-                                            <h2 className="font-medium text-gray-900">Team Members <span className="text-red-500">*</span></h2>
-                                            <p className="text-sm text-gray-500">Assign users to this project</p>
+                                            <h2 className="font-medium text-gray-900">Staff</h2>
+                                            <p className="text-sm text-gray-500">Assign staff of this company to the project. You can add more later.</p>
                                         </div>
                                     </div>
                                     {data.client_ids.length > 0 && (
@@ -216,13 +255,15 @@ export default function ProjectCreate({ clients }: Props) {
                                 {clients.length === 0 ? (
                                     <div className="text-center py-8">
                                         <UserPlus className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                                        <p className="text-gray-500">No users available</p>
+                                        <p className="text-gray-500">
+                                            {data.company_id ? 'This company has no active staff yet.' : 'Choose a client company to see its staff.'}
+                                        </p>
                                     </div>
                                 ) : (
                                     <div className="space-y-2 max-h-72 overflow-y-auto">
                                         {filteredClients.map((client) => {
                                             const selected = isClientSelected(client.id);
-                                            const role = client.role || 'client';
+                                            const role = client.role || 'staff';
                                             return (
                                                 <div
                                                     key={client.id}
@@ -246,8 +287,7 @@ export default function ProjectCreate({ clients }: Props) {
                                                         <p className="text-sm text-gray-500 truncate">{client.email}</p>
                                                     </div>
                                                     <span className={`text-xs px-2 py-1 rounded-full capitalize ${
-                                                        role === 'client' ? 'bg-amber-100 text-amber-700' :
-                                                        role === 'developer' ? 'bg-emerald-100 text-emerald-700' :
+                                                        role === 'staff' ? 'bg-emerald-100 text-emerald-700' :
                                                         role === 'manager' ? 'bg-purple-100 text-purple-700' :
                                                         'bg-gray-100 text-gray-700'
                                                     }`}>
@@ -291,7 +331,7 @@ export default function ProjectCreate({ clients }: Props) {
                                                     return (
                                                         <div
                                                             key={id}
-                                                            className={`w-7 h-7 rounded-full ${roleColors[c.role || 'client']} flex items-center justify-center text-white text-xs font-medium border-2 border-white`}
+                                                            className={`w-7 h-7 rounded-full ${roleColors[c.role || 'staff']} flex items-center justify-center text-white text-xs font-medium border-2 border-white`}
                                                         >
                                                             {c.name.charAt(0)}
                                                         </div>

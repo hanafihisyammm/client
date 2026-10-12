@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Models\Company;
 use App\Models\Project;
 use App\Models\Report;
 use App\Models\ReportActivityLog;
@@ -11,6 +12,7 @@ use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class ProjectController extends Controller
@@ -22,12 +24,9 @@ class ProjectController extends Controller
     {
         $user = Auth::user();
 
-        // Only admin, super_admin, manager, and developer can access projects
-        if (!in_array($user->role, ['super_admin', 'admin', 'manager', 'developer'])) {
-            abort(403, 'Unauthorized');
-        }
-
-        $query = Project::with(['creator', 'users'])
+        // Admins see every project, a manager their company's, staff the ones they are assigned to
+        $projects = Project::visibleTo($user)
+            ->with(['creator', 'users', 'company:id,uuid,name'])
             ->withCount([
                 'reports',
                 'reports as open_reports_count' => function ($query) {
@@ -45,19 +44,16 @@ class ProjectController extends Controller
                 'reports as closed_reports_count' => function ($query) {
                     $query->where('status', 'closed');
                 }
-            ]);
-
-        // Developers can only see projects they're assigned to
-        if ($user->isDeveloper()) {
-            $query->whereHas('users', function ($q) use ($user) {
-                $q->where('user_id', $user->id);
-            });
-        }
-
-        $projects = $query->orderBy('created_at', 'desc')->get();
+            ])
+            ->orderBy('created_at', 'desc')
+            ->get();
 
         return Inertia::render('admin/projects/index', [
             'projects' => $projects,
+            // Only admins and managers may create, edit or delete projects
+            'canManage' => $user->canManageProjects() && ($user->isAdmin() || $user->company_id !== null),
+            // Admins work across companies, so their list shows which company each project belongs to
+            'showCompany' => $user->isAdmin(),
         ]);
     }
 
@@ -67,19 +63,13 @@ class ProjectController extends Controller
     public function create()
     {
         $user = Auth::user();
-
-        // Only admin, super_admin, and manager can create projects
-        if (!$user->canManageProjects()) {
-            abort(403, 'Unauthorized');
-        }
-
-        // Get clients and developers for assignment
-        $clients = User::whereIn('role', ['client', 'developer'])
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role']);
+        $this->ensureCanCreateProjects($user);
 
         return Inertia::render('admin/projects/create', [
-            'clients' => $clients,
+            'clients' => $this->assignableStaff($user),
+            'companies' => $this->selectableCompanies($user),
+            // A manager's projects always belong to their own company
+            'fixedCompanyId' => $user->isAdmin() ? null : $user->company_id,
         ]);
     }
 
@@ -89,35 +79,40 @@ class ProjectController extends Controller
     public function store(Request $request)
     {
         $user = Auth::user();
+        $this->ensureCanCreateProjects($user);
 
-        // Only admin, super_admin, and manager can create projects
-        if (!$user->canManageProjects()) {
-            abort(403, 'Unauthorized');
-        }
-        
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:projects,name',
             'description' => 'nullable|string',
             'status' => 'required|in:active,inactive,completed',
-            'client_ids' => 'required|array|min:1',
+            'company_id' => $user->isAdmin() ? 'required|exists:companies,id' : 'nullable',
+            'client_ids' => 'array',
             'client_ids.*' => 'exists:users,id',
+        ], [
+            'company_id.required' => 'Please choose the client company this project belongs to.',
         ]);
 
+        // A manager can never create a project for another company, whatever the request says
+        $companyId = $user->isAdmin() ? (int) $validated['company_id'] : $user->company_id;
+        $memberIds = $this->validatedMemberIds($validated['client_ids'] ?? [], $companyId);
+
         $project = Project::create([
+            'company_id' => $companyId,
             'name' => $validated['name'],
-            'description' => $validated['description'],
+            'description' => $validated['description'] ?? null,
             'status' => $validated['status'],
             'created_by' => Auth::id(),
         ]);
 
-        $project->users()->attach($validated['client_ids'], [
+        $project->users()->attach($memberIds, [
             'role' => 'member',
             'assigned_by' => Auth::id(),
             'assigned_at' => now(),
         ]);
 
-        app(NotificationService::class)->notifyProjectAssigned($project, $user, $validated['client_ids']);
-        $memberMessage = $this->logMembershipChange($project, $validated['client_ids'], []);
+        app(NotificationService::class)->notifyProjectCreated($project, $user);
+        app(NotificationService::class)->notifyProjectAssigned($project, $user, $memberIds);
+        $memberMessage = $this->logMembershipChange($project, $memberIds, []);
 
         return redirect()->route('projects.index')
             ->with('flash', [
@@ -131,23 +126,7 @@ class ProjectController extends Controller
      */
     public function show(Project $project)
     {
-        $user = Auth::user();
-
-        // Check access based on role
-        if (!in_array($user->role, ['super_admin', 'admin', 'manager', 'developer'])) {
-            abort(403, 'Unauthorized');
-        }
-
-        // Developers can only view projects they're assigned to
-        if ($user->isDeveloper() && !$project->users->contains('id', $user->id)) {
-            abort(403, 'Unauthorized');
-        }
-
-        $project->load(['creator', 'users', 'reports.reporter', 'reports.attachments']);
-
-        return Inertia::render('admin/projects/show', [
-            'project' => $project,
-        ]);
+        return $this->renderProject($project);
     }
 
     /**
@@ -155,25 +134,7 @@ class ProjectController extends Controller
      */
     public function showByUuid($uuid)
     {
-        $user = Auth::user();
-
-        // Check access based on role
-        if (!in_array($user->role, ['super_admin', 'admin', 'manager', 'developer'])) {
-            abort(403, 'Unauthorized');
-        }
-
-        $project = Project::where('uuid', $uuid)->firstOrFail();
-
-        // Developers can only view projects they're assigned to
-        if ($user->isDeveloper() && !$project->users->contains('id', $user->id)) {
-            abort(403, 'Unauthorized');
-        }
-
-        $project->load(['creator', 'users', 'reports.reporter', 'reports.attachments']);
-
-        return Inertia::render('admin/projects/show', [
-            'project' => $project,
-        ]);
+        return $this->renderProject(Project::where('uuid', $uuid)->firstOrFail());
     }
 
     /**
@@ -181,23 +142,7 @@ class ProjectController extends Controller
      */
     public function edit(Project $project)
     {
-        $user = Auth::user();
-
-        // Only admin, super_admin, and manager can edit projects
-        if (!$user->canManageProjects()) {
-            abort(403, 'Unauthorized');
-        }
-
-        $project->load(['users']);
-        // Get clients and developers for assignment
-        $clients = User::whereIn('role', ['client', 'developer'])
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role']);
-
-        return Inertia::render('admin/projects/edit', [
-            'project' => $project,
-            'clients' => $clients,
-        ]);
+        return $this->renderEditForm($project);
     }
 
     /**
@@ -205,24 +150,7 @@ class ProjectController extends Controller
      */
     public function editByUuid($uuid)
     {
-        $user = Auth::user();
-
-        // Only admin, super_admin, and manager can edit projects
-        if (!$user->canManageProjects()) {
-            abort(403, 'Unauthorized');
-        }
-
-        $project = Project::where('uuid', $uuid)->firstOrFail();
-        $project->load(['users']);
-        // Get clients and developers for assignment
-        $clients = User::whereIn('role', ['client', 'developer'])
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role']);
-
-        return Inertia::render('admin/projects/edit', [
-            'project' => $project,
-            'clients' => $clients,
-        ]);
+        return $this->renderEditForm(Project::where('uuid', $uuid)->firstOrFail());
     }
 
     /**
@@ -230,70 +158,7 @@ class ProjectController extends Controller
      */
     public function update(Request $request, Project $project)
     {
-        $user = Auth::user();
-
-        // Only admin, super_admin, and manager can update projects
-        if (!$user->canManageProjects()) {
-            abort(403, 'Unauthorized');
-        }
-        
-        $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:projects,name,' . $project->id,
-            'description' => 'nullable|string',
-            'status' => 'required|in:active,inactive,completed',
-            'client_ids' => 'array',
-            'client_ids.*' => 'exists:users,id',
-        ]);
-
-        // Track changes for notifications
-        $changes = [];
-        if ($project->name !== $validated['name']) {
-            $changes['name'] = ['old' => $project->name, 'new' => $validated['name']];
-        }
-        if ($project->description !== $validated['description']) {
-            $changes['description'] = ['old' => $project->description, 'new' => $validated['description']];
-        }
-        if ($project->status !== $validated['status']) {
-            $changes['status'] = ['old' => $project->status, 'new' => $validated['status']];
-        }
-
-        $project->update([
-            'name' => $validated['name'],
-            'description' => $validated['description'],
-            'status' => $validated['status'],
-        ]);
-
-        // If project is marked as completed, close all open reports
-        $closedReportsCount = 0;
-        if ($validated['status'] === 'completed' && isset($changes['status'])) {
-            $closedReportsCount = $this->closeOpenReports($project, $user);
-        }
-
-        if (isset($validated['client_ids'])) {
-            $synced = $project->users()->sync($validated['client_ids']);
-            app(NotificationService::class)->notifyProjectAssigned($project, $user, $synced['attached']);
-            $memberMessage = $this->logMembershipChange($project, $synced['attached'], $synced['detached']);
-        } else {
-            $removedIds = $project->users()->pluck('users.id')->all();
-            $project->users()->detach();
-            $memberMessage = $this->logMembershipChange($project, [], $removedIds);
-        }
-
-        // Send notifications if there were changes
-        if (!empty($changes)) {
-            app(NotificationService::class)->notifyProjectUpdated($project, $user, $changes);
-        }
-
-        $message = 'Project updated successfully.' . $memberMessage;
-        if ($closedReportsCount > 0) {
-            $message .= " {$closedReportsCount} unfinished issue(s) were automatically closed.";
-        }
-
-        return redirect()->route('projects.index')
-            ->with('flash', [
-                'message' => $message,
-                'type' => 'success'
-            ]);
+        return $this->saveProject($request, $project);
     }
 
     /**
@@ -301,80 +166,7 @@ class ProjectController extends Controller
      */
     public function updateByUuid(Request $request, $uuid)
     {
-        $user = Auth::user();
-
-        // Only admin, super_admin, and manager can update projects
-        if (!$user->canManageProjects()) {
-            abort(403, 'Unauthorized');
-        }
-        
-        $project = Project::where('uuid', $uuid)->firstOrFail();
-        
-        $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:projects,name,' . $project->id,
-            'description' => 'nullable|string',
-            'status' => 'required|in:active,inactive,completed',
-            'client_ids' => 'array',
-            'client_ids.*' => 'exists:users,id',
-        ]);
-
-        // Track changes for notifications
-        $changes = [];
-        if ($project->name !== $validated['name']) {
-            $changes['name'] = ['old' => $project->name, 'new' => $validated['name']];
-        }
-        if ($project->description !== $validated['description']) {
-            $changes['description'] = ['old' => $project->description, 'new' => $validated['description']];
-        }
-        if ($project->status !== $validated['status']) {
-            $changes['status'] = ['old' => $project->status, 'new' => $validated['status']];
-        }
-
-        $project->update([
-            'name' => $validated['name'],
-            'description' => $validated['description'],
-            'status' => $validated['status'],
-        ]);
-
-        // If project is marked as completed, close all open reports
-        $closedReportsCount = 0;
-        if ($validated['status'] === 'completed' && isset($changes['status'])) {
-            $closedReportsCount = $this->closeOpenReports($project, $user);
-        }
-
-        if (isset($validated['client_ids'])) {
-            $syncData = [];
-            foreach ($validated['client_ids'] as $clientId) {
-                $syncData[$clientId] = [
-                    'role' => 'member',
-                    'assigned_by' => Auth::id(),
-                    'assigned_at' => now(),
-                ];
-            }
-            $synced = $project->users()->sync($syncData);
-            app(NotificationService::class)->notifyProjectAssigned($project, $user, $synced['attached']);
-            $memberMessage = $this->logMembershipChange($project, $synced['attached'], $synced['detached']);
-        } else {
-            $removedIds = $project->users()->pluck('users.id')->all();
-            $project->users()->detach();
-            $memberMessage = $this->logMembershipChange($project, [], $removedIds);
-        }
-
-        // Send notifications if there were changes
-        if (!empty($changes)) {
-            app(NotificationService::class)->notifyProjectUpdated($project, $user, $changes);
-        }
-
-        $message = 'Project updated successfully.' . $memberMessage;
-        if ($closedReportsCount > 0) {
-            $message .= " {$closedReportsCount} unfinished issue(s) were automatically closed.";
-        }
-
-        return redirect()->route('projects.index')
-            ->with('flash', [
-                'message' => $message,
-                'type' => 'success'
-            ]);
+        return $this->saveProject($request, Project::where('uuid', $uuid)->firstOrFail());
     }
 
     /**
@@ -384,18 +176,193 @@ class ProjectController extends Controller
     {
         $user = Auth::user();
 
-        // Only admin and super_admin can delete projects
-        if (!$user->isAdmin()) {
+        if (!$project->canBeManagedBy($user)) {
             abort(403, 'Unauthorized');
         }
 
+        $company = $project->company;
         $project->delete();
 
-        return redirect()->route('projects.index')
+        // Deleted from the client company's page: go back there, on its Projects tab
+        $redirect = request('from') === 'client' && $company
+            ? redirect("/clients/{$company->uuid}?tab=projects")
+            : redirect()->route('projects.index');
+
+        return $redirect
             ->with('flash', [
                 'message' => 'Project deleted successfully.',
                 'type' => 'success'
             ]);
+    }
+
+    private function renderProject(Project $project)
+    {
+        $user = Auth::user();
+
+        // Tenant check: the project must be in the user's company (and, for staff, one they are assigned to)
+        if (!$project->isVisibleTo($user)) {
+            abort(403, 'Unauthorized');
+        }
+
+        $project->load(['creator', 'users', 'company:id,uuid,name', 'reports.reporter', 'reports.attachments']);
+
+        return Inertia::render('admin/projects/show', [
+            'project' => $project,
+            'canManage' => $project->canBeManagedBy($user),
+        ]);
+    }
+
+    private function renderEditForm(Project $project)
+    {
+        $user = Auth::user();
+
+        if (!$project->canBeManagedBy($user)) {
+            abort(403, 'Unauthorized');
+        }
+
+        $project->load(['users', 'company:id,uuid,name']);
+
+        return Inertia::render('admin/projects/edit', [
+            'project' => $project,
+            // Only staff of the project's own company can be put on it
+            'clients' => $this->staffOfCompany($project->company_id),
+        ]);
+    }
+
+    private function saveProject(Request $request, Project $project)
+    {
+        $user = Auth::user();
+
+        if (!$project->canBeManagedBy($user)) {
+            abort(403, 'Unauthorized');
+        }
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:projects,name,' . $project->id,
+            'description' => 'nullable|string',
+            'status' => 'required|in:active,inactive,completed',
+            'client_ids' => 'array',
+            'client_ids.*' => 'exists:users,id',
+        ]);
+
+        $memberIds = $this->validatedMemberIds($validated['client_ids'] ?? [], $project->company_id);
+
+        // Track changes for notifications
+        $changes = [];
+        foreach (['name', 'description', 'status'] as $field) {
+            $newValue = $validated[$field] ?? null;
+            if ($project->{$field} !== $newValue) {
+                $changes[$field] = ['old' => $project->{$field}, 'new' => $newValue];
+            }
+        }
+
+        $project->update([
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'status' => $validated['status'],
+        ]);
+
+        // If project is marked as completed, close all open reports
+        $closedReportsCount = 0;
+        if ($validated['status'] === 'completed' && isset($changes['status'])) {
+            $closedReportsCount = $this->closeOpenReports($project, $user);
+        }
+
+        $syncData = [];
+        foreach ($memberIds as $memberId) {
+            $syncData[$memberId] = [
+                'role' => 'member',
+                'assigned_by' => Auth::id(),
+                'assigned_at' => now(),
+            ];
+        }
+        $synced = $project->users()->sync($syncData);
+        app(NotificationService::class)->notifyProjectAssigned($project, $user, $synced['attached']);
+        $memberMessage = $this->logMembershipChange($project, $synced['attached'], $synced['detached']);
+
+        // Send notifications if there were changes
+        if (!empty($changes)) {
+            app(NotificationService::class)->notifyProjectUpdated($project, $user, $changes);
+        }
+
+        $message = 'Project updated successfully.' . $memberMessage;
+        if ($closedReportsCount > 0) {
+            $message .= " {$closedReportsCount} unfinished issue(s) were automatically closed.";
+        }
+
+        return redirect()->route('projects.index')
+            ->with('flash', [
+                'message' => $message,
+                'type' => 'success'
+            ]);
+    }
+
+    /**
+     * Admins and managers create projects; a manager needs a company to create them in.
+     */
+    private function ensureCanCreateProjects(User $user): void
+    {
+        if (!$user->canManageProjects() || (!$user->isAdmin() && !$user->company_id)) {
+            abort(403, 'Unauthorized');
+        }
+    }
+
+    /**
+     * Staff who may be put on a project: every company's for an admin (the form filters
+     * by the chosen company), the manager's own company's otherwise.
+     */
+    private function assignableStaff(User $user)
+    {
+        return User::where('role', 'staff')
+            ->whereNull('deactivated_at')
+            ->whereNotNull('company_id')
+            ->when(!$user->isAdmin(), fn ($query) => $query->where('company_id', $user->company_id))
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'role', 'company_id']);
+    }
+
+    private function staffOfCompany(?int $companyId)
+    {
+        return User::where('role', 'staff')
+            ->whereNull('deactivated_at')
+            ->where('company_id', $companyId)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'role', 'company_id']);
+    }
+
+    private function selectableCompanies(User $user)
+    {
+        return Company::where('status', 'active')
+            ->when(!$user->isAdmin(), fn ($query) => $query->where('id', $user->company_id))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+    }
+
+    /**
+     * Only active staff of the project's own company may be members. Anyone else in the
+     * request is rejected rather than silently dropped, so a mistake is visible.
+     *
+     * @param  array<int, int|string>  $requestedIds
+     * @return array<int, int>
+     */
+    private function validatedMemberIds(array $requestedIds, ?int $companyId): array
+    {
+        $requestedIds = array_values(array_unique(array_map('intval', $requestedIds)));
+
+        $allowedIds = User::whereIn('id', $requestedIds)
+            ->where('role', 'staff')
+            ->where('company_id', $companyId)
+            ->whereNull('deactivated_at')
+            ->pluck('id')
+            ->all();
+
+        if (count($allowedIds) !== count($requestedIds)) {
+            throw ValidationException::withMessages([
+                'client_ids' => 'Only active staff of this client company can be added to its projects.',
+            ]);
+        }
+
+        return $allowedIds;
     }
 
     /**
@@ -456,9 +423,9 @@ class ProjectController extends Controller
                 continue;
             }
 
-            // Sentence for the success message, e.g. " 2 clients added to project successfully."
+            // Sentence for the success message, e.g. " 2 staff members added to project successfully."
             $count = count($ids);
-            $message .= ' ' . ($count === 1 ? 'Client' : "{$count} clients") . ' '
+            $message .= ' ' . ($count === 1 ? 'Staff member' : "{$count} staff members") . ' '
                 . strtolower($verb) . ' ' . ($verb === 'Added' ? 'to' : 'from') . ' project successfully.';
 
             $names = User::whereIn('id', $ids)->orderBy('name')->pluck('name')->implode(', ');

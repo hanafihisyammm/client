@@ -1,7 +1,7 @@
 import AppLayout from '@/layouts/app-layout';
 import { Head, Link } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit, Mail, Calendar, Shield, UserCog, Users, Code, User } from 'lucide-react';
+import { ArrowLeft, Edit, Mail, Calendar, Shield, UserCog, Users, Code, User, Pencil } from 'lucide-react';
 
 interface User {
     id: number;
@@ -30,8 +30,7 @@ function UserAvatar({ name, role }: { name: string; role: string }) {
         super_admin: 'bg-gradient-to-br from-red-500 to-rose-600',
         admin: 'bg-gradient-to-br from-blue-500 to-indigo-600',
         manager: 'bg-gradient-to-br from-purple-500 to-violet-600',
-        developer: 'bg-gradient-to-br from-emerald-500 to-teal-600',
-        client: 'bg-gradient-to-br from-amber-500 to-orange-600',
+        staff: 'bg-gradient-to-br from-emerald-500 to-teal-600',
     }[role] || 'bg-gradient-to-br from-gray-400 to-gray-500';
 
     return (
@@ -59,15 +58,10 @@ function RoleBadge({ role }: { role: string }) {
             className: 'bg-purple-50 text-purple-700 border-purple-200',
             icon: Users
         },
-        developer: {
-            label: 'Developer',
+        staff: {
+            label: 'Staff',
             className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
             icon: Code
-        },
-        client: {
-            label: 'Client',
-            className: 'bg-amber-50 text-amber-700 border-amber-200',
-            icon: User
         },
     }[role] || {
         label: role,
@@ -134,7 +128,7 @@ export default function Show({ user }: Props) {
                     </div>
                     <Link href={`/users/${user.uuid}/edit`}>
                         <Button className="shadow-sm">
-                            <Edit className="h-4 w-4 mr-2" />
+                            <Pencil className="h-4 w-4 mr-2" />
                             Edit User
                         </Button>
                     </Link>

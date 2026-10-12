@@ -2,45 +2,37 @@
 
 namespace Tests\Feature;
 
-use App\Models\Project;
-use App\Models\Report;
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\BuildsCompanies;
 use Tests\TestCase;
 
 class ProjectReportsTest extends TestCase
 {
-    use RefreshDatabase;
+    use BuildsCompanies, RefreshDatabase;
 
-    public function test_admin_can_open_a_report_listed_on_the_project_page()
+    public function test_an_issue_listed_on_the_project_page_can_be_opened()
     {
-        $admin = User::factory()->create(['role' => 'admin']);
-        $client = User::factory()->create(['role' => 'client']);
-        $project = Project::create([
-            'name' => 'Website',
-            'status' => 'active',
-            'created_by' => $admin->id,
-        ]);
-        $report = Report::create([
-            'title' => 'Login is broken',
-            'description' => 'Cannot log in',
-            'project_id' => $project->id,
-            'priority' => 'high',
-            'reported_by' => $client->id,
-            'status' => 'open',
-        ]);
+        $admin = $this->makeAdmin();
+        [$company] = $this->makeCompany('Acme');
+        $project = $this->makeProject($company, 'Website');
+        $staff = $this->makeStaff($company, [$project]);
+        $issue = $this->makeIssue($project, $staff);
 
-        $this->actingAs($admin)->get('/projects/view/' . $project->uuid)
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('admin/projects/show')
-                ->where('project.reports.0.uuid', (string) $report->uuid));
+        foreach ([$admin, $staff] as $user) {
+            $this->actingAs($user)->get('/projects/view/' . $project->uuid)
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component('admin/projects/show')
+                    ->where('project.reports.0.uuid', (string) $issue->uuid)
+                    ->where('project.company.name', 'Acme'));
 
-        $this->actingAs($admin)->get('/reports/' . $report->uuid)
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('reports/show')
-                ->where('report.title', 'Login is broken'));
+            $this->actingAs($user)->get('/reports/' . $issue->uuid)
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component('reports/show')
+                    ->where('report.title', 'Login is broken')
+                    ->where('abilities.view', true));
+        }
     }
 }

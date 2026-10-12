@@ -12,6 +12,10 @@ class ReportLinkController extends Controller
 {
     public function index(Report $report)
     {
+        if (!$report->isVisibleTo(Auth::user())) {
+            abort(403, 'Unauthorized');
+        }
+
         $outgoingLinks = $report->outgoingLinks()
             ->with(['targetReport:id,uuid,title,status,priority', 'creator:id,name'])
             ->get();
@@ -31,8 +35,7 @@ class ReportLinkController extends Controller
     {
         $user = Auth::user();
 
-        // Only admins, managers, and developers can link bugs
-        if (!$user->isAdmin() && !$user->isManager() && !$user->isDeveloper()) {
+        if (!$report->isVisibleTo($user)) {
             abort(403, 'Unauthorized');
         }
 
@@ -42,6 +45,11 @@ class ReportLinkController extends Controller
         ]);
 
         $targetReport = Report::where('uuid', $validated['target_report_uuid'])->first();
+
+        // The other issue must also be one this user can see, so issues are never linked across companies
+        if (!$targetReport->isVisibleTo($user)) {
+            return response()->json(['message' => 'The selected issue could not be found.'], 422);
+        }
 
         // Cannot link to itself
         if ($targetReport->id === $report->id) {
@@ -92,6 +100,10 @@ class ReportLinkController extends Controller
     public function destroy(Report $report, ReportLink $link)
     {
         $user = Auth::user();
+
+        if (!$report->isVisibleTo($user)) {
+            abort(403, 'Unauthorized');
+        }
 
         // Only the creator or admin can delete links
         if ($link->created_by !== $user->id && !$user->isAdmin()) {
