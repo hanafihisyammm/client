@@ -4,8 +4,9 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LabelController;
-use App\Http\Controllers\TimeEntryController;
 use App\Http\Controllers\ReportLinkController;
+use App\Http\Controllers\TimeEntryController;
+use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -13,11 +14,15 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', [HealthController::class, 'check']);
 Route::get('/status', [HealthController::class, 'status']);
 
-Route::middleware('auth')->group(function () {
+// Signed-in users (session) and automations (personal access token, see desk:token).
+// The session is tried first, so nothing changes for the browser. The active check is
+// repeated here because a token is only resolved by this middleware,
+// after the api group's own check has already run.
+Route::middleware(['auth:web,sanctum', EnsureUserIsActive::class])->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
-    
+
     Route::get('/csrf-token', function () {
         return response()->json(['token' => csrf_token()]);
     });
@@ -27,14 +32,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
-    
+
     // Get assignable team members (admins, managers, developers)
     // People an issue in the given project can be assigned to: admins, the company's
     // manager, and the staff assigned to that project
     Route::get('/team-members', function (Request $request) {
         $project = \App\Models\Project::find($request->query('project_id'));
 
-        if (!$project || !$project->isVisibleTo($request->user())) {
+        if (! $project || ! $project->isVisibleTo($request->user())) {
             return response()->json([]);
         }
 
@@ -94,6 +99,7 @@ Route::middleware('auth')->group(function () {
             ->pluck('id')
             ->all();
         $report->labels()->sync($labelIds);
+
         return response()->json([
             'message' => 'Labels updated successfully.',
             'labels' => $report->labels,
