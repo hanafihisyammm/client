@@ -54,13 +54,20 @@ class Report extends Model
      */
     public const FINISHED_STATUSES = [self::STATUS_RESOLVED, self::STATUS_CLOSED];
 
+    /**
+     * Left over from when issues had an assignee; kept in the database but never sent to
+     * a page or the API. Issues belong to projects, not to individual people.
+     */
+    protected $hidden = [
+        'assigned_to',
+    ];
+
     protected $fillable = [
         'title',
         'description',
         'project_id',
         'status',
         'reported_by',
-        'assigned_to',
         'resolved_by',
         'resolution_summary',
         'closed_at',
@@ -138,11 +145,6 @@ class Report extends Model
     public function reporter(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reported_by');
-    }
-
-    public function assignee(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'assigned_to');
     }
 
     /** Files attached to the issue itself; images posted with a comment belong to that comment */
@@ -256,7 +258,7 @@ class Report extends Model
     /**
      * Limit a query to the reports this user may see. Admins see everything. A manager
      * sees their company's reports. Staff see reports in their company that are in a
-     * project they are assigned to, or that they raised or are assigned to.
+     * project they are assigned to, or that they raised.
      */
     public function scopeVisibleTo($query, User $user)
     {
@@ -277,8 +279,7 @@ class Report extends Model
 
         return $query->where(function ($q) use ($user) {
             $q->whereIn('reports.project_id', $user->projectIds())
-                ->orWhere('reports.reported_by', $user->id)
-                ->orWhere('reports.assigned_to', $user->id);
+                ->orWhere('reports.reported_by', $user->id);
         });
     }
 
@@ -297,29 +298,7 @@ class Report extends Model
 
         return $user->isManager()
             || $this->reported_by === $user->id
-            || $this->assigned_to === $user->id
             || $user->projectIds()->contains($this->project_id);
-    }
-
-    /**
-     * Whether the report can be assigned to this user: an admin, the manager of the
-     * report's company, or a staff member assigned to the report's project.
-     */
-    public function canBeAssignedTo(User $assignee): bool
-    {
-        if (!$assignee->isActive()) {
-            return false;
-        }
-
-        if ($assignee->isAdmin()) {
-            return true;
-        }
-
-        if (!$this->belongsToCompanyOf($assignee)) {
-            return false;
-        }
-
-        return $assignee->isManager() || $assignee->projectIds()->contains($this->project_id);
     }
 
     /**
@@ -332,7 +311,7 @@ class Report extends Model
     {
         if (!$this->isVisibleTo($user)) {
             return array_fill_keys(
-                ['view', 'start_progress', 'resolve', 'reopen_work', 'confirm', 'close', 'reopen', 'edit', 'assign', 'comment', 'delete'],
+                ['view', 'start_progress', 'resolve', 'reopen_work', 'confirm', 'close', 'reopen', 'edit', 'comment', 'delete'],
                 false
             );
         }
@@ -357,7 +336,6 @@ class Report extends Model
             'close' => in_array($this->status, [self::STATUS_OPEN, self::STATUS_REOPENED], true) && $canDecide,
             'reopen' => in_array($this->status, [self::STATUS_RESOLVED, self::STATUS_CLOSED], true) && $canDecide,
             'edit' => $isAdmin || $isManager || ($isReporter && $this->status === self::STATUS_OPEN),
-            'assign' => $isAdmin || $isManager,
             'comment' => true,
             'delete' => $isAdmin || $isManager || ($isReporter && $this->status === self::STATUS_OPEN),
         ];
@@ -448,28 +426,6 @@ class Report extends Model
         );
 
         return true;
-    }
-
-    /**
-     * Assign report to a user and start progress
-     */
-    public function assignTo(User $user): void
-    {
-        $oldStatus = $this->status;
-
-        $this->update([
-            'assigned_to' => $user->id,
-            'status' => self::STATUS_IN_PROGRESS,
-        ]);
-
-        $this->logActivity('assigned', $user, [
-            'assigned_to' => $user->id,
-            'status' => self::STATUS_IN_PROGRESS
-        ]);
-
-        // Send notification for status change
-        $this->load('project');
-        app(NotificationService::class)->notifyReportStatusChanged($this, $user, $oldStatus, self::STATUS_IN_PROGRESS);
     }
 
     /**

@@ -152,30 +152,23 @@ class ManagerAndStaffPermissionsTest extends TestCase
         $this->assertNull($dana->fresh()->deactivated_at);
     }
 
-    public function test_a_manager_can_assign_issues_only_to_staff_on_that_project()
+    public function test_issues_are_not_assigned_to_anyone()
     {
         $issue = $this->makeIssue($this->website, $this->staff);
 
-        $this->act($this->manager, $issue, ['action' => 'assign', 'assignee_id' => $this->otherStaff->id])
-            ->assertStatus(422)
-            ->assertJsonPath('message', 'Chloe Staff is not on this project. Add them to the project first.');
+        // Neither a manager nor an admin can assign, and there is no list of people to pick from
+        $this->act($this->manager, $issue, ['action' => 'assign', 'assignee_id' => $this->staff->id])->assertStatus(400);
+        $this->act($this->makeAdmin(), $issue, ['action' => 'assign', 'assignee_id' => $this->staff->id])->assertStatus(400);
+        $this->actingAs($this->manager)->getJson('/api/team-members?project_id=' . $this->website->id)->assertNotFound();
 
-        $this->act($this->manager, $issue, ['action' => 'assign', 'assignee_id' => $this->staff->id])
-            ->assertOk()
-            ->assertJsonPath('message', 'Issue assigned to Ben Staff.');
-
-        $names = collect($this->actingAs($this->manager)->getJson('/api/team-members?project_id=' . $this->website->id)->json())->pluck('name');
-        $this->assertContains('Ben Staff', $names);
-        $this->assertContains($this->manager->name, $names);
-        $this->assertNotContains('Chloe Staff', $names);
+        // Working on it does not make anyone the assignee either
+        $this->act($this->manager, $issue, ['action' => 'start_progress'])->assertOk();
+        $this->assertNull($issue->fresh()->assigned_to);
     }
 
-    public function test_a_deactivated_staff_member_cannot_be_assigned_or_added_to_projects()
+    public function test_a_deactivated_staff_member_cannot_be_added_to_projects()
     {
         $this->staff->update(['deactivated_at' => now()]);
-        $issue = $this->makeIssue($this->website, $this->manager);
-
-        $this->act($this->manager, $issue, ['action' => 'assign', 'assignee_id' => $this->staff->id])->assertStatus(422);
 
         $this->actingAs($this->manager)->patch('/projects/' . $this->mobile->uuid . '/update', [
             'name' => 'Mobile',
@@ -212,13 +205,15 @@ class ManagerAndStaffPermissionsTest extends TestCase
     {
         $mine = $this->makeIssue($this->website, $this->otherStaff, ['title' => 'In my project']);
         $hidden = $this->makeIssue($this->mobile, $this->otherStaff, ['title' => 'Other project']);
-        $assigned = $this->makeIssue($this->mobile, $this->otherStaff, ['title' => 'Assigned to me', 'assigned_to' => $this->staff->id]);
+        // An old assignment from before assignees were removed no longer opens an issue elsewhere
+        $oldAssignment = $this->makeIssue($this->mobile, $this->otherStaff, ['title' => 'Assigned to me long ago']);
+        $oldAssignment->forceFill(['assigned_to' => $this->staff->id])->save();
 
         $titles = collect($this->actingAs($this->staff)->getJson('/api/reports?per_page=200')->json('data'))->pluck('title');
-        $this->assertEqualsCanonicalizing(['In my project', 'Assigned to me'], $titles->all());
+        $this->assertEqualsCanonicalizing(['In my project'], $titles->all());
 
         $this->actingAs($this->staff)->get('/reports/' . $mine->uuid)->assertOk();
-        $this->actingAs($this->staff)->get('/reports/' . $assigned->uuid)->assertOk();
+        $this->actingAs($this->staff)->get('/reports/' . $oldAssignment->uuid)->assertForbidden();
         $this->actingAs($this->staff)->get('/reports/' . $hidden->uuid)->assertForbidden();
         $this->act($this->staff, $hidden, ['action' => 'add_comment', 'comment' => 'Hello'])->assertForbidden();
 
@@ -266,7 +261,7 @@ class ManagerAndStaffPermissionsTest extends TestCase
         $this->assertSame(1, Report::count());
     }
 
-    public function test_staff_can_work_issues_but_cannot_manage_projects_users_or_assignments()
+    public function test_staff_can_work_issues_but_cannot_manage_projects_or_users()
     {
         $issue = $this->makeIssue($this->website, $this->manager);
 
@@ -274,7 +269,6 @@ class ManagerAndStaffPermissionsTest extends TestCase
         $this->act($this->staff, $issue, ['action' => 'add_comment', 'comment' => 'Working on it'])->assertOk();
         $this->act($this->staff, $issue, ['action' => 'resolve', 'resolution_summary' => 'Fixed'])->assertOk();
 
-        $this->act($this->staff, $issue, ['action' => 'assign', 'assignee_id' => $this->staff->id])->assertForbidden();
         $this->act($this->staff, $issue, ['action' => 'update_report', 'title' => 'Renamed', 'description' => 'x', 'priority' => 'low'])->assertForbidden();
         $this->actingAs($this->staff)->deleteJson('/api/reports/' . $issue->uuid)->assertForbidden();
 

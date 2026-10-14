@@ -41,33 +41,6 @@ Route::middleware(['auth:web,sanctum', EnsureUserIsActive::class])->group(functi
     Route::post('/push-subscriptions', [PushSubscriptionController::class, 'store'])->middleware(BlockWhileImpersonating::class);
     Route::delete('/push-subscriptions', [PushSubscriptionController::class, 'destroy']);
 
-    // Get assignable team members (admins, managers, developers)
-    // People an issue in the given project can be assigned to: admins, the company's
-    // manager, and the staff assigned to that project
-    Route::get('/team-members', function (Request $request) {
-        $project = \App\Models\Project::find($request->query('project_id'));
-
-        if (! $project || ! $project->isVisibleTo($request->user())) {
-            return response()->json([]);
-        }
-
-        return \App\Models\User::whereNull('deactivated_at')
-            ->where(function ($query) use ($project) {
-                $query->whereIn('role', ['admin', 'super_admin'])
-                    ->orWhere(function ($manager) use ($project) {
-                        $manager->where('role', 'manager')->where('company_id', $project->company_id);
-                    })
-                    ->orWhere(function ($staff) use ($project) {
-                        $staff->where('role', 'staff')->whereIn('id', function ($members) use ($project) {
-                            $members->select('user_id')->from('project_users')->where('project_id', $project->id);
-                        });
-                    });
-            })
-            ->select('id', 'name', 'email', 'role')
-            ->orderBy('name')
-            ->get();
-    });
-
     Route::get('/projects', function (Request $request) {
         return \App\Models\Project::visibleTo($request->user())
             ->whereHas('reports')

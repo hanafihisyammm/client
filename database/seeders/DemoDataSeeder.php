@@ -72,12 +72,12 @@ class DemoDataSeeder extends Seeder
 
         $this->issue($acmeWebsite, $ben, 'Checkout button does nothing on Safari', 'urgent', 'open', dueInDays: 2);
         $this->issue($acmeWebsite, $chloe, 'Product images load slowly', 'medium', 'open', dueInDays: -3);
-        $this->issue($acmeWebsite, $ben, 'Search returns out-of-stock items', 'high', 'in_progress', assignee: $chloe, dueInDays: 5);
-        $this->issue($acmeWebsite, $ben, 'Wrong tax shown on invoices', 'high', 'resolved', assignee: $chloe, resolver: $chloe, summary: 'Tax rate table corrected and invoices regenerated.');
-        $this->issue($acmeWebsite, $chloe, 'Contact form emails go to spam', 'medium', 'reopened', assignee: $ben, resolver: $ben, reopenedBy: $chloe, reason: 'Still landing in spam for Outlook addresses.');
-        $this->issue($acmeMobile, $chloe, 'App crashes when the cart is empty', 'urgent', 'in_progress', assignee: $chloe, dueInDays: 1);
+        $this->issue($acmeWebsite, $ben, 'Search returns out-of-stock items', 'high', 'in_progress', worker: $chloe, dueInDays: 5);
+        $this->issue($acmeWebsite, $ben, 'Wrong tax shown on invoices', 'high', 'resolved', worker: $chloe, resolver: $chloe, summary: 'Tax rate table corrected and invoices regenerated.');
+        $this->issue($acmeWebsite, $chloe, 'Contact form emails go to spam', 'medium', 'reopened', worker: $ben, resolver: $ben, reopenedBy: $chloe, reason: 'Still landing in spam for Outlook addresses.');
+        $this->issue($acmeMobile, $chloe, 'App crashes when the cart is empty', 'urgent', 'in_progress', worker: $chloe, dueInDays: 1);
         $this->issue($acmeMobile, $aisha, 'Add a reorder button to past orders', 'low', 'open');
-        $this->issue($acmeLegacy, $ben, 'Export supplier list before shutdown', 'medium', 'closed', assignee: $ben, resolver: $ben, closedBy: $aisha, summary: 'Exported to CSV and archived.');
+        $this->issue($acmeLegacy, $ben, 'Export supplier list before shutdown', 'medium', 'closed', worker: $ben, resolver: $ben, closedBy: $aisha, summary: 'Exported to CSV and archived.');
 
         // ---- Borneo Foods
         $borneo = Company::create(['name' => 'Borneo Foods', 'status' => 'active', 'created_by' => $admin->id]);
@@ -90,10 +90,10 @@ class DemoDataSeeder extends Seeder
         $ordering = $this->project($borneo, 'Borneo Ordering System', 'Wholesale ordering for restaurants', 'active', $farah, [$gopal, $hana]);
 
         $this->issue($ordering, $gopal, 'Delivery date picker allows Sundays', 'medium', 'open', dueInDays: 7);
-        $this->issue($ordering, $hana, 'Price list PDF is out of date', 'high', 'in_progress', assignee: $gopal);
-        $this->issue($ordering, $hana, 'Duplicate orders when the page is refreshed', 'urgent', 'resolved', assignee: $gopal, resolver: $gopal, summary: 'Order submission is now protected against double clicks and refreshes.');
+        $this->issue($ordering, $hana, 'Price list PDF is out of date', 'high', 'in_progress', worker: $gopal);
+        $this->issue($ordering, $hana, 'Duplicate orders when the page is refreshed', 'urgent', 'resolved', worker: $gopal, resolver: $gopal, summary: 'Order submission is now protected against double clicks and refreshes.');
         $this->issue($ordering, $farah, 'Add halal certificate numbers to product pages', 'low', 'open');
-        $this->issue($ordering, $gopal, 'Login page logo is stretched', 'low', 'closed', assignee: $hana, resolver: $hana, closedBy: $gopal, summary: 'Logo aspect ratio fixed.');
+        $this->issue($ordering, $gopal, 'Login page logo is stretched', 'low', 'closed', worker: $hana, resolver: $hana, closedBy: $gopal, summary: 'Logo aspect ratio fixed.');
 
         // The audit log should start empty rather than list every seeded record as a "System" action
         AuditLog::query()->delete();
@@ -160,7 +160,7 @@ class DemoDataSeeder extends Seeder
         string $title,
         string $priority,
         string $status,
-        ?User $assignee = null,
+        ?User $worker = null,
         ?User $resolver = null,
         ?User $closedBy = null,
         ?User $reopenedBy = null,
@@ -177,7 +177,6 @@ class DemoDataSeeder extends Seeder
             'priority' => $priority,
             'severity' => ['urgent' => 'critical', 'high' => 'major', 'medium' => 'minor', 'low' => 'trivial'][$priority],
             'reported_by' => $reporter->id,
-            'assigned_to' => $assignee?->id,
             'resolved_by' => $resolver?->id,
             'resolution_summary' => $summary,
             'status' => $status,
@@ -186,7 +185,8 @@ class DemoDataSeeder extends Seeder
         ]);
         $report->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt])->saveQuietly();
 
-        $worker = $assignee ?? $resolver;
+        // Whoever started work on it
+        $worker ??= $resolver;
         $at = $createdAt->copy();
 
         if ($worker && $status !== 'open') {

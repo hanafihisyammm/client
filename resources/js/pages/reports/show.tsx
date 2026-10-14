@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, FileImage, User, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, ChevronDown, UserPlus, Pencil } from 'lucide-react'
+import { ArrowLeft, FileImage, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, Pencil } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
 import AppLayout from '@/layouts/app-layout'
 import { getCsrfToken } from '@/lib/csrf'
@@ -44,7 +44,6 @@ interface Report {
   project_id?: number
   status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'reopened'
   reporter: { id: number; name: string; email: string; role: string }
-  assignee?: { id: number; name: string; email: string; role: string }
   due_date?: string | null
   priority: 'low' | 'medium' | 'high' | 'urgent'
   type?: 'bug' | 'feature'
@@ -224,7 +223,7 @@ interface PageProps extends Record<string, unknown> {
 
 /** What the server says this user may do with the issue right now. */
 type Abilities = Record<
-  'view' | 'start_progress' | 'resolve' | 'reopen_work' | 'confirm' | 'close' | 'reopen' | 'edit' | 'assign' | 'comment' | 'delete',
+  'view' | 'start_progress' | 'resolve' | 'reopen_work' | 'confirm' | 'close' | 'reopen' | 'edit' | 'comment' | 'delete',
   boolean
 >
 
@@ -306,12 +305,8 @@ export default function ReportShow() {
   // The images the lightbox steps through: the issue's own, or those of one comment
   const [lightboxImages, setLightboxImages] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
-  const [teamMembers, setTeamMembers] = useState<Array<{id: number; name: string; email: string; role: string}>>([])
-  const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false)
-  const [assigningUser, setAssigningUser] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const commentImageInputRef = useRef<HTMLInputElement>(null)
-  const assigneeDropdownRef = useRef<HTMLDivElement>(null)
 
   // Get image attachments for lightbox
   const imageAttachments = report.attachments.filter(a => /\.(jpg|jpeg|png|gif|webp)$/i.test(a.original_filename))
@@ -339,51 +334,6 @@ export default function ReportShow() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [lightboxOpen, lightboxImages.length])
-
-  const canAssign = abilities.assign
-
-  // Fetch team members for assignment
-  useEffect(() => {
-    const fetchTeamMembers = async () => {
-      try {
-        // Only people who can work on this issue: admins, the company's manager, and staff on its project
-        const query = report.project_id ? `?project_id=${report.project_id}` : ''
-        const response = await fetch(`/api/team-members${query}`, { credentials: 'same-origin' })
-        if (response.ok) {
-          const data = await response.json()
-          setTeamMembers(data)
-        }
-      } catch (error) {
-        console.error('Failed to fetch team members:', error)
-      }
-    }
-    if (canAssign) {
-      fetchTeamMembers()
-    }
-  }, [canAssign])
-
-  // Close assignee dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(e.target as Node)) {
-        setShowAssigneeDropdown(false)
-      }
-    }
-    if (showAssigneeDropdown) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [showAssigneeDropdown])
-
-  const handleAssign = async (userId: number | null) => {
-    setAssigningUser(true)
-    try {
-      await handleAction('assign', { assignee_id: userId })
-      setShowAssigneeDropdown(false)
-    } finally {
-      setAssigningUser(false)
-    }
-  }
 
   const projectName = typeof report.project === 'object' ? report.project?.name : report.project
   const projectUuid = typeof report.project === 'object' ? report.project?.uuid : null
@@ -1093,9 +1043,6 @@ export default function ReportShow() {
                         <div className="flex-1 bg-gray-50 rounded-lg p-3">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-sm text-gray-900">{comment.user.name}</span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${roleBadgeColors[comment.user.role] || roleBadgeColors.client}`}>
-                              {(comment.user.role || 'staff').replace('_', ' ')}
-                            </span>
                             <span className="text-xs text-gray-400">{timeAgo(comment.created_at)}</span>
                           </div>
                           {comment.comment && (
@@ -1206,106 +1153,6 @@ export default function ReportShow() {
               <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">People</h3>
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs text-gray-400 mb-2">Assignee</p>
-                  <div className="relative" ref={assigneeDropdownRef}>
-                    {canAssign ? (
-                      <button
-                        onClick={() => setShowAssigneeDropdown(!showAssigneeDropdown)}
-                        disabled={assigningUser}
-                        className="w-full flex items-center gap-3 p-2 -m-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
-                      >
-                        {report.assignee ? (
-                          <>
-                            <div className={`w-8 h-8 rounded-full ${roleColors[report.assignee.role] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium`}>
-                              {report.assignee.name.charAt(0)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{report.assignee.name}</p>
-                              <p className="text-xs text-gray-400 truncate">{report.assignee.email}</p>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                              <UserPlus className="w-4 h-4 text-gray-400" />
-                            </div>
-                            <span className="text-sm text-gray-500 flex-1">Click to assign</span>
-                          </>
-                        )}
-                        {assigningUser ? (
-                          <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                        ) : (
-                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showAssigneeDropdown ? 'rotate-180' : ''}`} />
-                        )}
-                      </button>
-                    ) : (
-                      report.assignee ? (
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full ${roleColors[report.assignee.role] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium`}>
-                            {report.assignee.name.charAt(0)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{report.assignee.name}</p>
-                            <p className="text-xs text-gray-400 truncate">{report.assignee.email}</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                            <User className="w-4 h-4 text-gray-400" />
-                          </div>
-                          <span className="text-sm text-gray-400">Unassigned</span>
-                        </div>
-                      )
-                    )}
-
-                    {/* Assignee Dropdown */}
-                    {showAssigneeDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-card border rounded-lg shadow-lg z-20 max-h-64 overflow-y-auto">
-                        {/* Unassign option */}
-                        {report.assignee && (
-                          <button
-                            onClick={() => handleAssign(null)}
-                            className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors border-b"
-                          >
-                            <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center">
-                              <X className="w-3.5 h-3.5 text-gray-400" />
-                            </div>
-                            <span className="text-sm text-gray-600">Unassign</span>
-                          </button>
-                        )}
-                        {/* Team members */}
-                        {teamMembers.map((member) => (
-                          <button
-                            key={member.id}
-                            onClick={() => handleAssign(member.id)}
-                            disabled={report.assignee?.id === member.id}
-                            className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors ${
-                              report.assignee?.id === member.id ? 'bg-blue-50' : ''
-                            }`}
-                          >
-                            <div className={`w-7 h-7 rounded-full ${roleColors[member.role] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium`}>
-                              {member.name.charAt(0)}
-                            </div>
-                            <div className="flex-1 min-w-0 text-left">
-                              <p className="text-sm font-medium text-gray-900 truncate">{member.name}</p>
-                              <p className="text-xs text-gray-400 truncate">{member.role.replace('_', ' ')}</p>
-                            </div>
-                            {report.assignee?.id === member.id && (
-                              <CheckCircle2 className="w-4 h-4 text-blue-500" />
-                            )}
-                          </button>
-                        ))}
-                        {teamMembers.length === 0 && (
-                          <div className="p-4 text-center text-sm text-gray-400">
-                            No team members available
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div>
                   <p className="text-xs text-gray-400 mb-2">Reporter</p>
                   <div className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded-full ${roleColors[report.reporter.role] || roleColors.staff} flex items-center justify-center text-white text-xs font-medium`}>
@@ -1368,8 +1215,7 @@ export default function ReportShow() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-gray-900">
-                        <span className="font-medium">{entry.user?.name ?? 'Unknown user'}</span>{' '}
-                        <span className="text-gray-500">· {humanize(entry.user?.role || 'user')}</span>
+                        <span className="font-medium">{entry.user?.name ?? 'Unknown user'}</span>
                       </p>
                       <p className="mt-0.5 font-medium text-gray-700">{entry.summary}</p>
                       {entry.details.length > 0 && (

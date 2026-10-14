@@ -10,7 +10,6 @@ use App\Notifications\CommentAdded;
 use App\Notifications\ProjectAssigned;
 use App\Notifications\ProjectCreated;
 use App\Notifications\ProjectUpdated;
-use App\Notifications\ReportAssigned;
 use App\Notifications\ReportCreated;
 use App\Notifications\ReportDeleted;
 use App\Notifications\ReportStatusChanged;
@@ -135,21 +134,6 @@ class NotificationService
     }
 
     /**
-     * Notify a user when they are assigned to a report.
-     */
-    public function notifyReportAssigned(Report $report, User $assignedBy, User $assignee): void
-    {
-        // Don't notify if assigning to self
-        if ($assignedBy->id === $assignee->id || !$assignee->isActive()) {
-            return;
-        }
-
-        $report->load('project');
-
-        $assignee->notify(new ReportAssigned($report, $assignedBy));
-    }
-
-    /**
      * Everyone involved in a project except the person who acted: all admins and
      * super admins, the manager of the project's company, and the staff assigned to
      * the project. Deactivated people are never notified.
@@ -182,10 +166,10 @@ class NotificationService
 
     /**
      * Everyone involved in a report except the person who acted:
-     * the project's audience plus the reporter and the assignee.
+     * the project's audience plus the reporter.
      */
     private function getReportRecipients(Report $report, User $actor): Collection
     {
-        return $this->getProjectRecipients($report->project, $actor, [$report->reported_by, $report->assigned_to]);
+        return $this->getProjectRecipients($report->project, $actor, [$report->reported_by]);
     }
 }

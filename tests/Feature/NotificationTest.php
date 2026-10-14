@@ -127,16 +127,16 @@ class NotificationTest extends TestCase
         $this->assertCount(0, $this->manager->notifications);
     }
 
-    public function test_assigning_an_issue_notifies_the_assignee()
+    public function test_issues_can_no_longer_be_assigned()
     {
         $issue = $this->issue();
 
-        $this->act($this->manager, $issue, ['action' => 'assign', 'assignee_id' => $this->teammate->id])->assertOk();
+        $this->act($this->manager, $issue, ['action' => 'assign', 'assignee_id' => $this->teammate->id])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Invalid action');
 
-        $notification = $this->teammate->notifications()->first();
-        $this->assertSame('Assigned to you: Login is broken', $notification->data['title']);
-        $this->assertSame('/reports/' . $issue->uuid, $notification->data['url']);
-        $this->assertCount(0, $this->manager->notifications);
+        $this->assertNull($issue->fresh()->assigned_to);
+        $this->assertCount(0, $this->teammate->notifications);
     }
 
     public function test_editing_an_issue_sends_one_notification_listing_the_changes()

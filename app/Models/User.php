@@ -80,11 +80,6 @@ class User extends Authenticatable
         return $this->hasMany(Report::class, 'reported_by');
     }
 
-    public function assignedReports(): HasMany
-    {
-        return $this->hasMany(Report::class, 'assigned_to');
-    }
-
     /**
      * Super admins and admins work across every company.
      */

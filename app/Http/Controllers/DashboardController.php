@@ -13,9 +13,9 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        $query = Report::with(['reporter', 'assignee', 'project']);
+        $query = Report::with(['reporter', 'project']);
 
-        // Managers see their company's issues; staff the ones in their projects, or that they raised or are assigned to
+        // Managers see their company's issues; staff the ones in their projects, or that they raised
         $query->visibleTo($user);
         // Admin, super_admin, and manager can see all reports (no additional filtering)
 

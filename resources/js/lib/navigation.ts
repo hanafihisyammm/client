@@ -20,3 +20,27 @@ export function goBack(fallback: string): void {
         router.get(fallback);
     }
 }
+
+// The page last opened from a notification, so that opening another notification from it
+// swaps the page instead of piling up entries in the browser's Back history
+let notificationPage: string | null = null;
+
+/**
+ * Open a notification's page. From a page that was itself opened from a notification
+ * (or the same page again), the new one takes its place in the browser history, so
+ * Back and the page's own close button still return to where the user started.
+ */
+export function openNotificationPage(url: string): void {
+    const current = window.location.pathname + window.location.search;
+    const target = new URL(url, window.location.origin);
+
+    router.visit(target.pathname + target.search, {
+        replace:
+            current === notificationPage ||
+            current === target.pathname + target.search,
+        onSuccess: () => {
+            notificationPage =
+                window.location.pathname + window.location.search;
+        },
+    });
+}

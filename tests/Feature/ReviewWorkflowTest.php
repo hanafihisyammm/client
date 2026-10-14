@@ -39,7 +39,7 @@ class ReviewWorkflowTest extends TestCase
         $this->worker = $this->makeStaff($this->company, [$this->project], ['name' => 'Will Worker']);
         $this->bystander = $this->makeStaff($this->company, [$this->project], ['name' => 'Bea Bystander']);
 
-        $this->issue = $this->makeIssue($this->project, $this->reporter, ['status' => 'in_progress', 'assigned_to' => $this->worker->id]);
+        $this->issue = $this->makeIssue($this->project, $this->reporter, ['status' => 'in_progress']);
     }
 
     private function resolveAs(User $user): void
@@ -162,7 +162,6 @@ class ReviewWorkflowTest extends TestCase
     {
         $issue = $this->makeIssue($this->project, $this->reporter);
 
-        $this->act($this->admin, $issue, ['action' => 'assign', 'assignee_id' => $this->worker->id])->assertOk();
         $this->act($this->admin, $issue, ['action' => 'start_progress'])->assertOk();
         $this->act($this->worker, $issue->fresh(), ['action' => 'resolve'])->assertOk();
         $this->act($this->admin, $issue->fresh(), ['action' => 'close'])->assertOk();
@@ -189,12 +188,12 @@ class ReviewWorkflowTest extends TestCase
         $url = '/reports/' . $this->issue->uuid;
 
         $this->actingAs($this->reporter)->get($url)
-            ->assertInertia(fn (Assert $page) => $page->where('abilities.confirm', true)->where('abilities.reopen', true)->where('abilities.assign', false));
+            ->assertInertia(fn (Assert $page) => $page->where('abilities.confirm', true)->where('abilities.reopen', true)->missing('abilities.assign'));
 
         $this->actingAs($this->worker)->get($url)
             ->assertInertia(fn (Assert $page) => $page->where('abilities.confirm', false)->where('abilities.reopen', false)->where('abilities.reopen_work', true));
 
         $this->actingAs($this->manager)->get($url)
-            ->assertInertia(fn (Assert $page) => $page->where('abilities.confirm', true)->where('abilities.assign', true)->where('abilities.edit', true));
+            ->assertInertia(fn (Assert $page) => $page->where('abilities.confirm', true)->missing('abilities.assign')->where('abilities.edit', true));
     }
 }

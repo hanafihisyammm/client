@@ -3,7 +3,7 @@ import { StatCard } from '@/components/stat-card';
 import { columnDragClass, useIssueDrag } from '@/hooks/use-issue-drag';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Users, FileText, Calendar, User, Clock, CheckCircle2, AlertCircle, FolderKanban, Plus, Settings, RotateCcw, Bug, Sparkles, ArrowUpRight, AlertTriangle, Info, Pencil } from 'lucide-react';
+import { ArrowLeft, Users, FileText, Calendar, Clock, CheckCircle2, AlertCircle, FolderKanban, Plus, Settings, RotateCcw, Bug, Sparkles, ArrowUpRight, AlertTriangle, Info, Pencil } from 'lucide-react';
 
 interface UserType {
     id: number;
@@ -21,7 +21,6 @@ interface Report {
     priority?: 'low' | 'medium' | 'high' | 'urgent';
     created_at: string;
     reporter: UserType;
-    assignee?: UserType;
 }
 
 interface Project {
@@ -95,16 +94,7 @@ function IssueCard({ report, projectPrefix, dragProps = {}, moving = false }: { 
             <p className="text-sm font-medium text-gray-900 line-clamp-2 mb-2 group-hover:text-blue-600">
                 {report.title}
             </p>
-            <div className="flex items-center justify-between">
-                {report.assignee ? (
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-medium" title={report.assignee.name}>
-                        {report.assignee.name.charAt(0)}
-                    </div>
-                ) : (
-                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">
-                        <User className="w-3 h-3 text-gray-400" />
-                    </div>
-                )}
+            <div className="flex items-center justify-end">
                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${status.bg} ${status.text}`}>
                     {status.label}
                 </span>

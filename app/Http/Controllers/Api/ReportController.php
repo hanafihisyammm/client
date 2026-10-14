@@ -35,10 +35,10 @@ class ReportController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = Auth::user();
-        $query = Report::with(['reporter:id,name,email', 'assignee:id,name,email', 'attachments', 'project', 'labels'])
+        $query = Report::with(['reporter:id,name,email', 'attachments', 'project', 'labels'])
             ->orderBy('created_at', 'desc');
 
-        // Clients and developers only see reports they raised, are assigned to, or that are in their projects
+        // Managers and staff only see reports they raised or that are in their projects
         $query->visibleTo($user);
 
         if ($request->has('status') && $request->status !== 'all') {
@@ -47,10 +47,6 @@ class ReportController extends Controller
 
         if ($request->has('project') && $request->project !== 'all') {
             $query->where('project_id', $request->project);
-        }
-
-        if ($request->has('assigned_to') && $request->assigned_to !== 'all') {
-            $query->where('assigned_to', $request->assigned_to);
         }
 
         if ($request->has('severity') && $request->severity !== 'all') {
@@ -179,7 +175,6 @@ class ReportController extends Controller
 
         $report->load([
             'reporter:id,name,email,role',
-            'assignee:id,name,email,role',
             'attachments',
             'activityLogs.user:id,name,email,role',
             'comments.user:id,name,email,role',
@@ -232,7 +227,6 @@ class ReportController extends Controller
         } else {
             $needed = match ($action) {
                 'update_report' => 'edit',
-                'assign' => 'assign',
                 'add_comment', 'add_attachments' => 'comment',
                 default => null,
             };
@@ -262,11 +256,6 @@ class ReportController extends Controller
                 }
 
                 $report->startProgress($user);
-
-                // Auto-assign if not assigned
-                if (!$report->assigned_to) {
-                    $report->update(['assigned_to' => $user->id]);
-                }
 
                 $message = 'Issue moved to In Progress.';
                 break;
@@ -339,12 +328,8 @@ class ReportController extends Controller
 
                 $report->transitionTo($validated['new_status'], $user, $validated['resolution_summary'] ?? null);
 
-                // Same follow-up as the dedicated "start progress" and "resolve" actions
-                if ($validated['new_status'] === Report::STATUS_IN_PROGRESS) {
-                    if (!$report->assigned_to) {
-                        $report->update(['assigned_to' => $user->id]);
-                    }
-                } elseif ($validated['new_status'] === Report::STATUS_RESOLVED) {
+                // Same follow-up as the dedicated "resolve" action
+                if ($validated['new_status'] === Report::STATUS_RESOLVED) {
                     $report->recordResolution();
                 }
 
@@ -554,45 +539,6 @@ class ReportController extends Controller
                 $message = 'Comment added successfully.';
                 break;
 
-            case 'assign':
-                $validated = $request->validate([
-                    'assignee_id' => 'nullable|exists:users,id',
-                ]);
-
-                $oldAssignee = $report->assignee;
-                $newAssigneeId = $validated['assignee_id'];
-
-                // The assignee must be able to open the issue: an admin, the company's manager, or staff on its project
-                $candidate = $newAssigneeId ? \App\Models\User::find($newAssigneeId) : null;
-                if ($candidate && !$report->canBeAssignedTo($candidate)) {
-                    return response()->json([
-                        'message' => $candidate->isStaff() && $candidate->isActive()
-                            ? "{$candidate->name} is not on this project. Add them to the project first."
-                            : 'Issues can only be assigned to active people who work on this project.',
-                    ], 422);
-                }
-
-                $report->update(['assigned_to' => $newAssigneeId]);
-
-                // Log the assignment
-                $newAssignee = $newAssigneeId ? \App\Models\User::find($newAssigneeId) : null;
-                ReportActivityLog::create([
-                    'report_id' => $report->id,
-                    'user_id' => $user->id,
-                    'action' => $newAssigneeId ? 'assigned' : 'unassigned',
-                    'old_values' => ['assigned_to' => $oldAssignee?->id, 'assignee_name' => $oldAssignee?->name],
-                    'new_values' => ['assigned_to' => $newAssigneeId, 'assignee_name' => $newAssignee?->name],
-                ]);
-
-                // Send notification to the new assignee
-                if ($newAssignee && $newAssignee->id !== $user->id) {
-                    $report->load('project');
-                    app(NotificationService::class)->notifyReportAssigned($report, $user, $newAssignee);
-                }
-
-                $message = $newAssignee ? "Issue assigned to {$newAssignee->name}." : 'Issue unassigned.';
-                break;
-
             case 'add_attachments':
                 $request->validate([
                     'attachments' => 'required|array|min:1|max:5',
@@ -617,7 +563,6 @@ class ReportController extends Controller
 
         $freshReport = $report->fresh()->load([
             'reporter:id,name,email,role',
-            'assignee:id,name,email,role',
             'attachments',
             'activityLogs.user:id,name,email,role',
             'comments.user:id,name,email,role',

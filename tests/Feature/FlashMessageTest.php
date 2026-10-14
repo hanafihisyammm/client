@@ -136,7 +136,6 @@ class FlashMessageTest extends TestCase
         $asAdmin = fn (array $payload) => $this->actingAs($this->admin)->patchJson($url, $payload);
         $asManager = fn (array $payload) => $this->actingAs($this->manager)->patchJson($url, $payload);
 
-        $asAdmin(['action' => 'assign', 'assignee_id' => $this->staff->id])->assertJsonPath('message', 'Issue assigned to Sam Staff.');
         $asAdmin(['action' => 'add_comment', 'comment' => 'On it'])->assertJsonPath('message', 'Comment added successfully.');
         $asAdmin(['action' => 'start_progress'])->assertJsonPath('message', 'Issue moved to In Progress.');
         $asAdmin(['action' => 'resolve', 'resolution_summary' => 'Fixed'])->assertJsonPath('message', 'Issue marked as resolved.');

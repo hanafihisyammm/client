@@ -39,7 +39,8 @@ class ApiTokenTest extends TestCase
 
         $issue->refresh();
         $this->assertSame('in_progress', $issue->status);
-        $this->assertSame($admin->id, $issue->assigned_to);
+        // Starting work no longer makes anyone the issue's assignee
+        $this->assertNull($issue->assigned_to);
         $this->assertSame($admin->id, $issue->comments()->first()->user_id);
     }
 

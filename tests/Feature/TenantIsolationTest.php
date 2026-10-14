@@ -143,7 +143,7 @@ class TenantIsolationTest extends TestCase
     /**
      * @dataProvider outsiders
      */
-    public function test_labels_time_entries_links_and_assignee_lists_are_also_isolated(string $who)
+    public function test_labels_time_entries_and_links_are_also_isolated(string $who)
     {
         $user = $this->{$who};
         $label = Label::create(['project_id' => $this->acmeProject->id, 'name' => 'Bug', 'color' => '#ff0000']);
@@ -165,8 +165,6 @@ class TenantIsolationTest extends TestCase
             'target_report_uuid' => $this->acmeIssue->uuid,
             'link_type' => 'relates_to',
         ])->assertStatus(422);
-
-        $this->assertSame([], $this->actingAs($user)->getJson('/api/team-members?project_id=' . $this->acmeProject->id)->json());
 
         // A label from another company's project cannot be attached to their own issue
         $this->actingAs($user)->postJson('/api/reports/' . $this->borneoIssue->uuid . '/labels', ['label_ids' => [$label->id]])->assertOk();
@@ -228,9 +226,9 @@ class TenantIsolationTest extends TestCase
                 'project_ids' => [$this->acmeProject->id],
             ])->assertSessionHasErrors('project_ids');
 
-        // An issue cannot be assigned to another company's staff
+        // Issues are not assigned to anyone, so not to another company's staff either
         $this->act($this->borneoManager, $this->borneoIssue, ['action' => 'assign', 'assignee_id' => $this->acmeStaff->id])
-            ->assertStatus(422);
+            ->assertStatus(400);
 
         // A manager's new project always lands in their own company, whatever the request says
         $this->actingAs($this->borneoManager)->post('/projects', [

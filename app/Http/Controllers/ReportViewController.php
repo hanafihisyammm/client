@@ -49,7 +49,6 @@ class ReportViewController extends Controller
         $report->load([
             'project:id,name',
             'reporter:id,name,email,role',
-            'assignee:id,name,email,role',
             'attachments',
             'activityLogs.user:id,name,email,role',
             'comments.user:id,name,email,role',
@@ -83,7 +82,6 @@ class ReportViewController extends Controller
         $report->load([
             'project:id,name',
             'reporter:id,name,email,role',
-            'assignee:id,name,email,role',
             'activityLogs.user:id,name,email,role',
             'comments.user:id,name,email,role',
             'comments.attachments',

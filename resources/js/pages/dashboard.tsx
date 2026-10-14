@@ -37,7 +37,6 @@ interface Report {
   type?: 'bug' | 'feature'
   severity?: 'trivial' | 'minor' | 'major' | 'critical' | null
   reporter: { id: number; name: string; email: string }
-  assignee?: { id: number; name: string; email: string }
   labels?: Label[]
   total_time_spent?: number
   attachments: Array<{
@@ -130,7 +129,7 @@ const severityColors = {
   trivial: 'bg-gray-500 text-white'
 }
 
-type SortField = 'issue_key' | 'type' | 'title' | 'project' | 'status' | 'priority' | 'severity' | 'due_date' | 'assignee' | 'created_at'
+type SortField = 'issue_key' | 'type' | 'title' | 'project' | 'status' | 'priority' | 'severity' | 'due_date' | 'created_at'
 type SortOrder = 'asc' | 'desc'
 type ViewMode = 'list' | 'board'
 
@@ -149,7 +148,6 @@ export default function Dashboard() {
     priority: 'all',
     severity: 'all',
     project: 'all',
-    assignee: 'all',
     search: '',
     overdue: 'all'
   })
@@ -232,10 +230,6 @@ export default function Dashboard() {
         case 'due_date':
           aValue = a.due_date ? new Date(a.due_date).getTime() : 0
           bValue = b.due_date ? new Date(b.due_date).getTime() : 0
-          break
-        case 'assignee':
-          aValue = a.assignee?.name?.toLowerCase() || ''
-          bValue = b.assignee?.name?.toLowerCase() || ''
           break
         case 'created_at':
           aValue = new Date(a.created_at).getTime()
@@ -507,7 +501,7 @@ export default function Dashboard() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setFilters({ status: 'all', priority: 'all', severity: 'all', project: 'all', assignee: 'all', search: '', overdue: 'all' })}
+                  onClick={() => setFilters({ status: 'all', priority: 'all', severity: 'all', project: 'all', search: '', overdue: 'all' })}
                   className="h-9 px-3 text-gray-500 hover:text-gray-700"
                 >
                   <X className="w-3.5 h-3.5 mr-1" />
@@ -658,16 +652,6 @@ export default function Dashboard() {
                     <Button
                       variant="ghost"
                       className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
-                      onClick={() => handleSort('assignee')}
-                    >
-                      Assignee
-                      {getSortIcon('assignee')}
-                    </Button>
-                  </TableHead>
-                  <TableHead>
-                    <Button
-                      variant="ghost"
-                      className="h-auto p-0 font-medium text-xs uppercase tracking-wider hover:bg-transparent"
                       onClick={() => handleSort('due_date')}
                     >
                       Due Date
@@ -724,18 +708,6 @@ export default function Dashboard() {
                           <PriorityIcon className={`w-4 h-4 ${priority?.color}`} />
                           <span className="text-sm text-gray-600">{priority?.label}</span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {report.assignee ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium">
-                              {report.assignee.name.charAt(0)}
-                            </div>
-                            <span className="text-sm text-gray-600">{report.assignee.name}</span>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">Unassigned</span>
-                        )}
                       </TableCell>
                       <TableCell>
                         {report.due_date ? (

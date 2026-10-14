@@ -3,7 +3,7 @@ import { columnDragClass, useIssueDrag, type IssueStatus } from '@/hooks/use-iss
 import { Badge } from '@/components/ui/badge';
 import { isIssueOverdue, labelStyle } from '@/lib/utils';
 import { IssueTypeBadge } from '@/components/issue-type-badge';
-import { User as UserIcon, Clock, ArrowUpRight, AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { Clock, ArrowUpRight, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 
 interface Label {
     id: number;
@@ -24,7 +24,6 @@ interface Report {
     type?: 'bug' | 'feature';
     severity?: 'trivial' | 'minor' | 'major' | 'critical' | null;
     reporter: { id: number; name: string; email: string };
-    assignee?: { id: number; name: string; email: string };
     labels?: Label[];
     created_at: string;
 }
@@ -151,19 +150,6 @@ function IssueCard({ report, dragProps = {}, moving = false }: { report: Report;
             {/* Footer */}
             <div className="flex items-center justify-between text-xs text-gray-500">
                 <div className="flex items-center gap-2">
-                    {/* Assignee Avatar */}
-                    {report.assignee ? (
-                        <div className="flex items-center gap-1" title={report.assignee.name}>
-                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-medium">
-                                {report.assignee.name.charAt(0)}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center">
-                            <UserIcon className="w-3 h-3 text-gray-400" />
-                        </div>
-                    )}
-
                     {/* Due Date */}
                     {report.due_date && (
                         <div className={`flex items-center gap-0.5 ${isOverdue ? 'text-red-600 font-medium' : ''}`}>

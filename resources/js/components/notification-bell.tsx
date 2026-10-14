@@ -9,9 +9,9 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { csrfPost } from '@/lib/csrf';
+import { openNotificationPage } from '@/lib/navigation';
 import { showUnreadOnAppIcon } from '@/lib/push';
 import { cn } from '@/lib/utils';
-import { router } from '@inertiajs/react';
 import { formatDistanceToNow } from 'date-fns';
 import { Bell } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -82,7 +82,7 @@ export function NotificationBell() {
         }
 
         if (notification.url) {
-            router.visit(notification.url);
+            openNotificationPage(notification.url);
         }
     };
 
