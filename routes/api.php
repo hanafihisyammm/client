@@ -29,7 +29,8 @@ Route::middleware(['auth:web,sanctum', EnsureUserIsActive::class])->group(functi
         return response()->json(['token' => csrf_token()]);
     });
 
-    Route::apiResource('reports', ReportController::class);
+    // Named api.reports.* so they don't clash with the web pages' reports.* (route:cache refuses duplicates)
+    Route::apiResource('reports', ReportController::class)->names('api.reports');
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
