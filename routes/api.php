@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\PushSubscriptionController;
+use App\Http\Middleware\BlockWhileImpersonating;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LabelController;
@@ -32,6 +34,11 @@ Route::middleware(['auth:web,sanctum', EnsureUserIsActive::class])->group(functi
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+
+    // Phone / desktop alerts for this browser. A Super Admin signed in as someone else must
+    // not start receiving that person's alerts on their own browser.
+    Route::post('/push-subscriptions', [PushSubscriptionController::class, 'store'])->middleware(BlockWhileImpersonating::class);
+    Route::delete('/push-subscriptions', [PushSubscriptionController::class, 'destroy']);
 
     // Get assignable team members (admins, managers, developers)
     // People an issue in the given project can be assigned to: admins, the company's

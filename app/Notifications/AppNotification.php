@@ -8,6 +8,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
+use NotificationChannels\WebPush\WebPushChannel;
+use NotificationChannels\WebPush\WebPushMessage;
 
 abstract class AppNotification extends Notification implements ShouldQueue
 {
@@ -30,7 +32,44 @@ abstract class AppNotification extends Notification implements ShouldQueue
      */
     public function via(object $notifiable): array
     {
-        return ['database', 'mail'];
+        $channels = ['database', 'mail'];
+
+        // Also as an alert on the phones and computers where the user turned alerts on
+        if ($notifiable instanceof User && $notifiable->pushSubscriptions()->exists()) {
+            $channels[] = WebPushChannel::class;
+        }
+
+        return $channels;
+    }
+
+    /**
+     * The phone / desktop alert: the same title, message and link as the in-app notification.
+     */
+    public function toWebPush(object $notifiable, Notification $notification): WebPushMessage
+    {
+        $data = $this->toArray($notifiable);
+        $url = (string) ($data['url'] ?? '');
+
+        $message = (new WebPushMessage)
+            ->title(Str::limit((string) ($data['title'] ?? config('app.name')), 120))
+            ->body(Str::limit((string) ($data['message'] ?? ''), 200))
+            ->icon('/icons/icon-192.png')
+            ->badge('/icons/badge-96.png')
+            ->data([
+                // Only a path on this site; the service worker opens nothing else
+                'url' => str_starts_with($url, '/') && ! str_starts_with($url, '//') ? $url : '/dashboard',
+                'id' => $this->id,
+                'unread' => $notifiable instanceof User ? $notifiable->unreadNotifications()->count() : null,
+            ])
+            // Kept by the push service for a day if the device is off, then dropped
+            ->options(['TTL' => 86400, 'urgency' => 'normal']);
+
+        // A newer alert about the same notification replaces the older one
+        if ($this->id) {
+            $message->tag($this->id);
+        }
+
+        return $message;
     }
 
     /**

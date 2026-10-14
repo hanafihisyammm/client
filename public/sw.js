@@ -11,6 +11,9 @@
  * Only GET requests are ever looked at, so nothing that changes data can look as if it
  * worked while offline: it simply fails, as it would without a service worker.
  *
+ * It also shows phone / desktop alerts sent by the server (Web Push), and opens the
+ * notification's page on this site when one is clicked.
+ *
  * Change VERSION whenever this file or offline.html changes.
  */
 const VERSION = 'v1';
@@ -65,6 +68,62 @@ self.addEventListener('fetch', (event) => {
 
     // Everything else (Inertia page data, /api, /storage, ...) goes to the server untouched
 });
+
+// Phone / desktop alerts (Web Push). The server sends the notification's title, message and
+// the page to open; nothing is stored here.
+self.addEventListener('push', (event) => {
+    let alert = {};
+    try {
+        alert = event.data ? event.data.json() : {};
+    } catch {
+        // Unreadable: still show something, as browsers require for every push
+    }
+
+    const data = alert.data || {};
+
+    event.waitUntil(
+        Promise.all([
+            self.registration.showNotification(alert.title || 'Sidra Desk', {
+                body: alert.body || 'You have a new notification.',
+                icon: alert.icon || '/icons/icon-192.png',
+                badge: alert.badge || '/icons/badge-96.png',
+                tag: alert.tag,
+                data: { url: pathOnThisSite(data.url) },
+            }),
+            showUnreadCount(data.unread),
+        ]),
+    );
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const url = new URL(pathOnThisSite(event.notification.data && event.notification.data.url), self.location.origin).href;
+
+    event.waitUntil(
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+            // Bring an open window of the app forward and show the page there
+            const open = windows.find((client) => new URL(client.url).origin === self.location.origin);
+            if (open) {
+                return open.focus().then((client) => (client.navigate ? client.navigate(url) : client));
+            }
+
+            return self.clients.openWindow(url);
+        }),
+    );
+});
+
+/** A path on this site, never another site's address; the dashboard otherwise. */
+function pathOnThisSite(path) {
+    return typeof path === 'string' && /^\/(?!\/)/.test(path) && !path.includes('\\') ? path : '/dashboard';
+}
+
+/** The number on the installed app's icon, where the system shows one. */
+function showUnreadCount(count) {
+    const navigator = self.navigator;
+    if (typeof count !== 'number' || !navigator || !navigator.setAppBadge) return Promise.resolve();
+
+    return (count > 0 ? navigator.setAppBadge(count) : navigator.clearAppBadge()).catch(() => {});
+}
 
 function isBuildFile(url) {
     return url.pathname.startsWith('/build/assets/') && url.search === '';

@@ -39,15 +39,22 @@ class AppServiceProvider extends ServiceProvider
 
         $this->registerAuditLogging();
 
-        // "Remember me" ends everywhere else when the password changes (from the settings page,
-        // "Forgot password" or an admin), and everywhere when the account is deactivated
+        // "Remember me" and phone / desktop alerts end everywhere else when the password changes
+        // (from the settings page, "Forgot password" or an admin), and everywhere when the
+        // account is deactivated
         User::updated(function (User $user) {
             if ($user->wasChanged('password')) {
-                PersistentLogins::revokeAll($user, except: PersistentLogins::currentFor($user));
+                $current = PersistentLogins::currentFor($user);
+                PersistentLogins::revokeAll($user, except: $current);
+                // Phone / desktop alerts stop too, except on this browser
+                $user->pushSubscriptions()
+                    ->where(fn ($query) => $query->whereNull('persistent_login_id')->orWhere('persistent_login_id', '!=', $current ?? 0))
+                    ->delete();
             }
 
             if ($user->wasChanged('deactivated_at') && $user->deactivated_at !== null) {
                 PersistentLogins::revokeAll($user);
+                $user->pushSubscriptions()->delete();
             }
         });
 

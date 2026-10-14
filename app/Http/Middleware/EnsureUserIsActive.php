@@ -26,6 +26,7 @@ class EnsureUserIsActive
 
         if ($user && !$user->isActive()) {
             \App\Support\PersistentLogins::revokeAll($user);
+            $user->pushSubscriptions()->delete();
             \App\Support\PersistentLogins::forgetCookie();
             Auth::guard('web')->logout();
 

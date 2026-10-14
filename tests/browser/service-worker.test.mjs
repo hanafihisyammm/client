@@ -59,11 +59,23 @@ function load() {
         }
     }
 
+    // What the alerts did: notifications shown, the app icon's number, windows focused or opened
+    const alerts = { shown: [], badge: undefined, windows: [], opened: [] };
+
     const self = {
         location: new URL(`${ORIGIN}/sw.js`),
         addEventListener: (type, listener) => (listeners[type] = listener),
         skipWaiting: async () => {},
-        clients: { claim: async () => {} },
+        clients: {
+            claim: async () => {},
+            matchAll: async () => alerts.windows,
+            openWindow: async (url) => alerts.opened.push(url),
+        },
+        registration: { showNotification: async (title, options) => alerts.shown.push({ title, ...options }) },
+        navigator: {
+            setAppBadge: async (count) => (alerts.badge = count),
+            clearAppBadge: async () => (alerts.badge = 0),
+        },
     };
 
     const caches = {
@@ -98,6 +110,22 @@ function load() {
             listeners.fetch({ request, respondWith: (value) => (response = Promise.resolve(value)) });
 
             return response;
+        },
+        alerts,
+        /** An alert arriving from the push service. */
+        async push(payload) {
+            let done;
+            const data = payload === undefined ? null : { json: () => (typeof payload === 'string' ? JSON.parse(payload) : payload) };
+            listeners.push({ data, waitUntil: (promise) => (done = promise) });
+            await done;
+        },
+        /** Clicking an alert. */
+        async click(data) {
+            let done;
+            let closed = false;
+            listeners.notificationclick({ notification: { data, close: () => (closed = true) }, waitUntil: (promise) => (done = promise) });
+            await done;
+            return closed;
         },
         /** Every address stored in any cache. */
         stored: () => [...stores.values()].flatMap((store) => [...store.keys()].map((url) => new URL(url).pathname + new URL(url).search)),
@@ -241,4 +269,75 @@ test('a new version clears the caches of the old one, and no one else\'s', async
     await worker.activate();
 
     assert.deepEqual([...worker.stores.keys()].sort(), ['another-app', 'sidra-desk-static-v1']);
+});
+
+test('an alert shows the notification and the unread count on the app icon', async () => {
+    await worker.push({
+        title: 'New comment: Checkout button',
+        body: 'Ben: It still fails on Safari',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/badge-96.png',
+        tag: 'abc-123',
+        data: { url: '/reports/0b6e', id: 'abc-123', unread: 3 },
+    });
+
+    assert.equal(worker.alerts.shown.length, 1);
+    const [shown] = worker.alerts.shown;
+    assert.equal(shown.title, 'New comment: Checkout button');
+    assert.equal(shown.body, 'Ben: It still fails on Safari');
+    assert.equal(shown.tag, 'abc-123');
+    assert.deepEqual({ ...shown.data }, { url: '/reports/0b6e' });
+    assert.equal(worker.alerts.badge, 3);
+
+    await worker.push({ title: 'x', data: { unread: 0 } });
+    assert.equal(worker.alerts.badge, 0, 'the number goes once everything is read');
+});
+
+test('an alert that cannot be read still shows something, as browsers require', async () => {
+    await worker.push('{not json');
+    await worker.push(undefined);
+
+    assert.equal(worker.alerts.shown.length, 2);
+    for (const shown of worker.alerts.shown) {
+        assert.equal(shown.title, 'Sidra Desk');
+        assert.equal(shown.data.url, '/dashboard');
+    }
+});
+
+test('an alert never links to another site', async () => {
+    for (const url of ['https://evil.example/x', '//evil.example/x', 'javascript:alert(1)', '/\\evil.example', 42, null]) {
+        await worker.push({ title: 'x', data: { url } });
+    }
+
+    assert.ok(worker.alerts.shown.every((shown) => shown.data.url === '/dashboard'));
+});
+
+test('alerts are not stored anywhere', async () => {
+    await worker.push({ title: 'Private title', data: { url: '/reports/0b6e' } });
+    assertOnlyPublicFilesStored();
+});
+
+test('clicking an alert opens its page in the app', async () => {
+    const closed = await worker.click({ url: '/reports/0b6e' });
+
+    assert.ok(closed, 'the alert is dismissed');
+    assert.deepEqual(worker.alerts.opened, [`${ORIGIN}/reports/0b6e`]);
+});
+
+test('clicking an alert brings an open window forward instead of opening another', async () => {
+    const navigated = [];
+    const open = { url: `${ORIGIN}/dashboard`, focus: async () => open, navigate: async (url) => navigated.push(url) };
+    worker.alerts.windows.push({ url: 'https://other.example/', focus: async () => assert.fail('another site is never used') }, open);
+
+    await worker.click({ url: '/reports/0b6e' });
+
+    assert.deepEqual(navigated, [`${ORIGIN}/reports/0b6e`]);
+    assert.deepEqual(worker.alerts.opened, []);
+});
+
+test('clicking an alert with a foreign link opens the dashboard', async () => {
+    await worker.click({ url: 'https://evil.example/phish' });
+    await worker.click(undefined);
+
+    assert.deepEqual(worker.alerts.opened, [`${ORIGIN}/dashboard`, `${ORIGIN}/dashboard`]);
 });

@@ -50,6 +50,12 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        // This browser stops receiving alerts. A remembered browser's alerts also end with its
+        // login below; the page sends its alert address for one that was not remembered.
+        if ($request->user() && is_string($endpoint = $request->input('push_endpoint'))) {
+            $request->user()->deletePushSubscription($endpoint);
+        }
+
         // This browser only; others where the user ticked "Remember me" stay signed in
         PersistentLogins::end($request);
         Auth::guard('web')->logout();

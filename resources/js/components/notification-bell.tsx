@@ -1,3 +1,4 @@
+import { PushAlertsToggle } from '@/components/push-alerts-toggle';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -8,6 +9,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { csrfPost } from '@/lib/csrf';
+import { showUnreadOnAppIcon } from '@/lib/push';
 import { cn } from '@/lib/utils';
 import { router } from '@inertiajs/react';
 import { formatDistanceToNow } from 'date-fns';
@@ -60,6 +62,9 @@ export function NotificationBell() {
             document.removeEventListener('visibilitychange', refresh);
         };
     }, [fetchNotifications]);
+
+    // The same number on the installed app's icon
+    useEffect(() => showUnreadOnAppIcon(unreadCount), [unreadCount]);
 
     const openNotification = async (notification: AppNotification) => {
         if (!notification.read_at) {
@@ -178,6 +183,7 @@ export function NotificationBell() {
                         ))
                     )}
                 </div>
+                <PushAlertsToggle />
             </DropdownMenuContent>
         </DropdownMenu>
     );

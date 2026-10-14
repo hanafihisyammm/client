@@ -57,6 +57,10 @@ class HandleInertiaRequests extends Middleware
                 : null,
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'csrfToken' => csrf_token(),
+            // Lets a signed-in browser turn on phone / desktop alerts (the key is public)
+            'webPush' => fn () => $request->user() && config('webpush.vapid.public_key')
+                ? ['publicKey' => config('webpush.vapid.public_key')]
+                : null,
             // One-off success/error message set by the previous action. The id lets the page
             // show each message once, even if the browser restores this page from history.
             'flash' => function () use ($request) {

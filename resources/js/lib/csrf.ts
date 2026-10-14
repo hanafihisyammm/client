@@ -1,3 +1,5 @@
+import { showUnreadOnAppIcon, unsubscribe } from './push';
+
 /**
  * Get the current CSRF token from the meta tag
  */
@@ -50,6 +52,11 @@ async function refreshCsrfToken(): Promise<string | null> {
  */
 export async function logoutUser(redirectUrl: string = '/'): Promise<void> {
     try {
+        // This browser stops receiving the user's phone / desktop alerts
+        const pushEndpoint = await unsubscribe().catch(() => null);
+        const pushField = pushEndpoint ? `&push_endpoint=${encodeURIComponent(pushEndpoint)}` : '';
+        showUnreadOnAppIcon(0);
+
         let token = getCsrfToken();
         console.log('Initial CSRF Token:', token); // Debug log
         
@@ -75,7 +82,7 @@ export async function logoutUser(redirectUrl: string = '/'): Promise<void> {
                     'X-CSRF-TOKEN': token,
                     'X-Requested-With': 'XMLHttpRequest',
                 },
-                body: `_token=${encodeURIComponent(token)}`,
+                body: `_token=${encodeURIComponent(token)}${pushField}`,
             },
             // Approach 2: Simple form with just token
             {
@@ -83,7 +90,7 @@ export async function logoutUser(redirectUrl: string = '/'): Promise<void> {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'X-CSRF-TOKEN': token,
                 },
-                body: `_token=${encodeURIComponent(token)}`,
+                body: `_token=${encodeURIComponent(token)}${pushField}`,
             },
             // Approach 3: Just header token
             {
@@ -126,7 +133,7 @@ export async function logoutUser(redirectUrl: string = '/'): Promise<void> {
                     for (let j = i + 1; j < approaches.length; j++) {
                         approaches[j].headers['X-CSRF-TOKEN'] = token;
                         if (approaches[j].body.includes('_token=')) {
-                            approaches[j].body = `_token=${encodeURIComponent(token)}`;
+                            approaches[j].body = `_token=${encodeURIComponent(token)}${pushField}`;
                         }
                     }
                 }

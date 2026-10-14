@@ -25,11 +25,11 @@ let state: InstallState = {
 };
 const listeners = new Set<() => void>();
 
-const isStandalone = () =>
+export const isStandalone = () =>
     window.matchMedia('(display-mode: standalone)').matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
-const isIos = () =>
+export const isIos = () =>
     /iphone|ipad|ipod/i.test(navigator.userAgent) ||
     // iPadOS reports itself as a Mac
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
