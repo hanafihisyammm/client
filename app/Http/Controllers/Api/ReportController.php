@@ -29,6 +29,9 @@ class ReportController extends Controller
      */
     private const ATTACHMENT_RULES = 'file|mimes:jpeg,jpg,png,gif,webp,pdf|max:5120';
 
+    /** What may be posted with a comment: images only, with the same size limit */
+    private const COMMENT_IMAGE_RULES = 'file|mimes:jpeg,jpg,png,gif,webp|max:5120';
+
     public function index(Request $request): JsonResponse
     {
         $user = Auth::user();
@@ -180,6 +183,7 @@ class ReportController extends Controller
             'attachments',
             'activityLogs.user:id,name,email,role',
             'comments.user:id,name,email,role',
+            'comments.attachments',
             'labels',
             'timeEntries.user:id,name,email',
             'outgoingLinks.targetReport:id,uuid,title,status,priority',
@@ -514,15 +518,34 @@ class ReportController extends Controller
                 break;
 
             case 'add_comment':
+                // Text, images, or both: a screenshot alone is a comment too
                 $validated = $request->validate([
-                    'comment' => 'required|string|min:1|max:2000',
+                    'comment' => 'nullable|required_without:images|string|max:2000',
+                    'images' => 'nullable|array|max:5',
+                    'images.*' => self::COMMENT_IMAGE_RULES,
                 ]);
 
-                $comment = ReportComment::create([
-                    'report_id' => $report->id,
-                    'user_id' => $user->id,
-                    'comment' => $validated['comment'],
-                ]);
+                $images = $this->prepareAttachments($request->file('images') ?? [], 'images');
+                $storedPaths = [];
+
+                try {
+                    $comment = DB::transaction(function () use ($report, $user, $validated, $images, &$storedPaths) {
+                        $comment = ReportComment::create([
+                            'report_id' => $report->id,
+                            'user_id' => $user->id,
+                            'comment' => trim($validated['comment'] ?? ''),
+                        ]);
+
+                        $this->saveAttachments($report, $images, $storedPaths, $comment);
+
+                        return $comment;
+                    });
+                } catch (\Throwable $exception) {
+                    // The comment was not saved, so its images must not be left behind either
+                    Storage::disk('public')->delete($storedPaths);
+
+                    throw $exception;
+                }
 
                 // Send notification for new comment
                 $report->load('project', 'reporter');
@@ -598,6 +621,7 @@ class ReportController extends Controller
             'attachments',
             'activityLogs.user:id,name,email,role',
             'comments.user:id,name,email,role',
+            'comments.attachments',
             'labels',
             'timeEntries.user:id,name,email',
             'outgoingLinks.targetReport:id,uuid,title,status,priority',
@@ -625,7 +649,7 @@ class ReportController extends Controller
      *
      * @throws ValidationException naming the file that cannot be used
      */
-    private function prepareAttachments(array $files): array
+    private function prepareAttachments(array $files, string $field = 'attachments'): array
     {
         $processor = app(AttachmentImageProcessor::class);
         $prepared = [];
@@ -635,7 +659,7 @@ class ReportController extends Controller
                 $prepared[] = ['file' => $file, 'image' => $processor->handles($file) ? $processor->process($file) : null];
             } catch (InvalidImageException $exception) {
                 throw ValidationException::withMessages([
-                    'attachments' => ['"' . $file->getClientOriginalName() . '" ' . $exception->getMessage()],
+                    $field => ['"' . $file->getClientOriginalName() . '" ' . $exception->getMessage()],
                 ]);
             }
         }
@@ -644,12 +668,13 @@ class ReportController extends Controller
     }
 
     /**
-     * Store prepared attachments on the public disk and record them against the report.
+     * Store prepared attachments on the public disk and record them against the report,
+     * and against the comment they were posted with, if any.
      *
      * @param  array<int, array{file: UploadedFile, image: ?ProcessedImage}>  $attachments
      * @param  array<int, string>  $storedPaths  Filled with every path written, for cleaning up after a failure
      */
-    private function saveAttachments(Report $report, array $attachments, array &$storedPaths): void
+    private function saveAttachments(Report $report, array $attachments, array &$storedPaths, ?ReportComment $comment = null): void
     {
         $disk = Storage::disk('public');
         $directory = 'reports/' . $report->id;
@@ -682,6 +707,7 @@ class ReportController extends Controller
 
             ReportAttachment::create([
                 'report_id' => $report->id,
+                'report_comment_id' => $comment?->id,
                 'filename' => $filename,
                 'original_filename' => $originalName,
                 'mime_type' => $image ? $image->mimeType : $file->getMimeType(),
@@ -699,7 +725,7 @@ class ReportController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        foreach ($report->attachments as $attachment) {
+        foreach ($report->allAttachments as $attachment) {
             Storage::disk('public')->delete($attachment->storage_path);
         }
 

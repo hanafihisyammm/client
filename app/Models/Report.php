@@ -145,7 +145,14 @@ class Report extends Model
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
+    /** Files attached to the issue itself; images posted with a comment belong to that comment */
     public function attachments(): HasMany
+    {
+        return $this->hasMany(ReportAttachment::class)->whereNull('report_comment_id');
+    }
+
+    /** Every file stored for the issue, including the images posted with its comments */
+    public function allAttachments(): HasMany
     {
         return $this->hasMany(ReportAttachment::class);
     }

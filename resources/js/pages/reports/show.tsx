@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, FileImage, User, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ChevronDown, UserPlus, Pencil } from 'lucide-react'
+import { ArrowLeft, FileImage, User, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, ChevronDown, UserPlus, Pencil } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
 import AppLayout from '@/layouts/app-layout'
 import { getCsrfToken } from '@/lib/csrf'
@@ -55,18 +55,14 @@ interface Report {
   time_entries?: TimeEntry[]
   outgoing_links?: ReportLink[]
   incoming_links?: ReportLink[]
-  attachments: Array<{
-    id: number
-    filename: string
-    original_filename: string
-    storage_path: string
-    file_size?: number
-  }>
+  attachments: Attachment[]
   comments?: Array<{
     id: number
     comment: string
     user: { id: number; name: string; email: string; role: string }
     created_at: string
+    // Images posted with the comment
+    attachments?: Attachment[]
   }>
   activityLogs?: ActivityLog[]
   resolution_summary?: string
@@ -74,6 +70,19 @@ interface Report {
   created_at: string
   updated_at: string
 }
+
+interface Attachment {
+  id: number
+  filename: string
+  original_filename: string
+  storage_path: string
+  file_size?: number
+}
+
+// What a comment may carry: the same limits the server checks
+const COMMENT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+const MAX_COMMENT_IMAGES = 5
+const MAX_COMMENT_IMAGE_BYTES = 5 * 1024 * 1024
 
 interface ActivityLog {
   id: number
@@ -281,6 +290,8 @@ export default function ReportShow() {
   const [report, setReport] = useState<Report>(initialReport)
   const [loading, setLoading] = useState(false)
   const [newComment, setNewComment] = useState('')
+  // Images waiting to be posted with the comment, each with a preview URL
+  const [commentImages, setCommentImages] = useState<Array<{ file: File; preview: string }>>([])
   // Opened from an edit link elsewhere (?edit=1): start in edit mode
   const [isEditing, setIsEditing] = useState(
     () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('edit') === '1'
@@ -292,15 +303,24 @@ export default function ReportShow() {
   const [editData, setEditData] = useState(() => editDataFor(report))
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState(0)
+  // The images the lightbox steps through: the issue's own, or those of one comment
+  const [lightboxImages, setLightboxImages] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
   const [teamMembers, setTeamMembers] = useState<Array<{id: number; name: string; email: string; role: string}>>([])
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false)
   const [assigningUser, setAssigningUser] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const commentImageInputRef = useRef<HTMLInputElement>(null)
   const assigneeDropdownRef = useRef<HTMLDivElement>(null)
 
   // Get image attachments for lightbox
   const imageAttachments = report.attachments.filter(a => /\.(jpg|jpeg|png|gif|webp)$/i.test(a.original_filename))
+
+  const openLightbox = (images: Attachment[], index: number) => {
+    setLightboxImages(images)
+    setLightboxIndex(index)
+    setLightboxOpen(true)
+  }
 
   // Keyboard navigation for lightbox
   useEffect(() => {
@@ -308,9 +328,9 @@ export default function ReportShow() {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') {
-        setLightboxIndex((prev) => (prev === 0 ? imageAttachments.length - 1 : prev - 1))
+        setLightboxIndex((prev) => (prev === 0 ? lightboxImages.length - 1 : prev - 1))
       } else if (e.key === 'ArrowRight') {
-        setLightboxIndex((prev) => (prev === imageAttachments.length - 1 ? 0 : prev + 1))
+        setLightboxIndex((prev) => (prev === lightboxImages.length - 1 ? 0 : prev + 1))
       } else if (e.key === 'Escape') {
         setLightboxOpen(false)
       }
@@ -318,7 +338,7 @@ export default function ReportShow() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [lightboxOpen, imageAttachments.length])
+  }, [lightboxOpen, lightboxImages.length])
 
   const canAssign = abilities.assign
 
@@ -434,10 +454,99 @@ export default function ReportShow() {
     }
   }
 
+  // Add picked, pasted or dropped images to the comment, refusing what the server would refuse
+  const addCommentImages = (files: File[]) => {
+    const accepted: File[] = []
+    for (const file of files) {
+      if (!COMMENT_IMAGE_TYPES.includes(file.type)) {
+        flashError(`"${file.name}" is not a JPEG, PNG, GIF or WebP image.`)
+      } else if (file.size > MAX_COMMENT_IMAGE_BYTES) {
+        flashError(`"${file.name}" is larger than 5 MB.`)
+      } else {
+        accepted.push(file)
+      }
+    }
+
+    const room = MAX_COMMENT_IMAGES - commentImages.length
+    if (accepted.length > room) {
+      flashError(`A comment can have up to ${MAX_COMMENT_IMAGES} images.`)
+    }
+
+    const added = accepted.slice(0, Math.max(room, 0)).map(file => ({ file, preview: URL.createObjectURL(file) }))
+    if (added.length > 0) setCommentImages(prev => [...prev, ...added])
+  }
+
+  const removeCommentImage = (index: number) => {
+    setCommentImages(prev => {
+      URL.revokeObjectURL(prev[index].preview)
+      return prev.filter((_, i) => i !== index)
+    })
+  }
+
+  // A screenshot pasted into the comment box is attached to the comment
+  const handleCommentPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData.files).filter(file => file.type.startsWith('image/'))
+    if (files.length === 0) return
+    e.preventDefault()
+    addCommentImages(files)
+  }
+
   const handleAddComment = async () => {
-    if (!newComment.trim()) return
-    await handleAction('add_comment', { comment: newComment })
-    setNewComment('')
+    if (!newComment.trim() && commentImages.length === 0) return
+
+    // Text only: the plain JSON request
+    if (commentImages.length === 0) {
+      await handleAction('add_comment', { comment: newComment })
+      setNewComment('')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const tokenResponse = await fetch('/api/csrf-token', { credentials: 'same-origin' })
+      let csrfToken = ''
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json()
+        csrfToken = tokenData.token
+      } else {
+        csrfToken = getCsrfToken() || ''
+      }
+
+      const formData = new FormData()
+      formData.append('action', 'add_comment')
+      formData.append('comment', newComment)
+      commentImages.forEach(({ file }) => formData.append('images[]', file))
+
+      const response = await fetch(`/api/reports/${report.uuid}`, {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': csrfToken,
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-HTTP-Method-Override': 'PATCH'
+        },
+        credentials: 'same-origin',
+        body: formData
+      })
+
+      const result = await response.json()
+      if (response.ok) {
+        flashSuccess(result.message, 'Comment added successfully.')
+        setReport(result.report)
+        if (result.abilities) setAbilities(result.abilities)
+        setNewComment('')
+        commentImages.forEach(({ preview }) => URL.revokeObjectURL(preview))
+        setCommentImages([])
+      } else {
+        // Validation errors name the image that could not be used
+        const firstError = result.errors ? Object.values(result.errors).flat()[0] : null
+        flashError((firstError as string) || result.message || 'Failed to add comment')
+      }
+    } catch (error) {
+      flashError('Network error. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleUploadAttachments = async (files: FileList | null) => {
@@ -525,8 +634,10 @@ export default function ReportShow() {
         user: item.user,
         created_at: item.created_at,
         summary: 'Added a comment',
-        details: [],
-        quote: item.comment
+        details: item.attachments?.length
+          ? [`${item.attachments.length} ${item.attachments.length === 1 ? 'image' : 'images'}`]
+          : [],
+        quote: item.comment || undefined
       })),
     {
       key: 'created',
@@ -918,10 +1029,7 @@ export default function ReportShow() {
                           {imageAttachments.map((attachment, index) => (
                             <button
                               key={attachment.id}
-                              onClick={() => {
-                                setLightboxIndex(index)
-                                setLightboxOpen(true)
-                              }}
+                              onClick={() => openLightbox(imageAttachments, index)}
                               className="flex-shrink-0 group relative rounded-lg overflow-hidden border-2 border-transparent hover:border-blue-500 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                             >
                               <img
@@ -990,7 +1098,29 @@ export default function ReportShow() {
                             </span>
                             <span className="text-xs text-gray-400">{timeAgo(comment.created_at)}</span>
                           </div>
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.comment}</p>
+                          {comment.comment && (
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.comment}</p>
+                          )}
+                          {comment.attachments && comment.attachments.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {comment.attachments.map((attachment, index) => (
+                                <button
+                                  key={attachment.id}
+                                  type="button"
+                                  onClick={() => openLightbox(comment.attachments!, index)}
+                                  className="rounded-md overflow-hidden border hover:border-blue-500 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  title={attachment.original_filename}
+                                >
+                                  <img
+                                    src={`/storage/${attachment.storage_path}`}
+                                    alt={attachment.original_filename}
+                                    loading="lazy"
+                                    className="w-28 h-20 object-cover"
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1006,12 +1136,51 @@ export default function ReportShow() {
                       <Textarea
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="Add a comment..."
+                        onPaste={handleCommentPaste}
+                        placeholder="Add a comment... (paste a screenshot to attach it)"
                         rows={2}
                         className="resize-none mb-2"
                       />
-                      <div className="flex justify-end">
-                        <Button size="sm" onClick={handleAddComment} disabled={loading || !newComment.trim()}>
+                      {commentImages.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {commentImages.map(({ file, preview }, index) => (
+                            <div key={preview} className="relative">
+                              <img src={preview} alt={file.name} title={file.name} className="w-20 h-16 object-cover rounded-md border" />
+                              <button
+                                type="button"
+                                onClick={() => removeCommentImage(index)}
+                                className="absolute -top-1.5 -right-1.5 rounded-full bg-gray-900/80 p-0.5 text-white hover:bg-gray-900"
+                                aria-label={`Remove ${file.name}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <input
+                          ref={commentImageInputRef}
+                          type="file"
+                          accept={COMMENT_IMAGE_TYPES.join(',')}
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            addCommentImages(Array.from(e.target.files ?? []))
+                            e.target.value = ''
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => commentImageInputRef.current?.click()}
+                          disabled={loading || commentImages.length >= MAX_COMMENT_IMAGES}
+                        >
+                          <ImagePlus className="w-4 h-4 mr-1" />
+                          Add image
+                        </Button>
+                        <Button size="sm" onClick={handleAddComment} disabled={loading || (!newComment.trim() && commentImages.length === 0)}>
                           <Send className="w-4 h-4 mr-1" />
                           Comment
                         </Button>
@@ -1280,7 +1449,7 @@ export default function ReportShow() {
       )}
 
       {/* Image Lightbox/Carousel */}
-      {lightboxOpen && imageAttachments.length > 0 && (
+      {lightboxOpen && lightboxImages.length > 0 && (
         <div
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
           onClick={() => setLightboxOpen(false)}
@@ -1295,8 +1464,8 @@ export default function ReportShow() {
 
           {/* Download button */}
           <a
-            href={`/storage/${imageAttachments[lightboxIndex].storage_path}`}
-            download={imageAttachments[lightboxIndex].original_filename}
+            href={`/storage/${lightboxImages[lightboxIndex].storage_path}`}
+            download={lightboxImages[lightboxIndex].original_filename}
             onClick={(e) => e.stopPropagation()}
             className="absolute top-4 right-16 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-white"
           >
@@ -1305,15 +1474,15 @@ export default function ReportShow() {
 
           {/* Image counter */}
           <div className="absolute top-4 left-4 text-white/80 text-sm font-medium bg-black/30 px-3 py-1.5 rounded-full">
-            {lightboxIndex + 1} / {imageAttachments.length}
+            {lightboxIndex + 1} / {lightboxImages.length}
           </div>
 
           {/* Previous button */}
-          {imageAttachments.length > 1 && (
+          {lightboxImages.length > 1 && (
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                setLightboxIndex((prev) => (prev === 0 ? imageAttachments.length - 1 : prev - 1))
+                setLightboxIndex((prev) => (prev === 0 ? lightboxImages.length - 1 : prev - 1))
               }}
               className="absolute left-4 p-3 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-white"
             >
@@ -1327,18 +1496,18 @@ export default function ReportShow() {
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={`/storage/${imageAttachments[lightboxIndex].storage_path}`}
-              alt={imageAttachments[lightboxIndex].original_filename}
+              src={`/storage/${lightboxImages[lightboxIndex].storage_path}`}
+              alt={lightboxImages[lightboxIndex].original_filename}
               className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
             />
           </div>
 
           {/* Next button */}
-          {imageAttachments.length > 1 && (
+          {lightboxImages.length > 1 && (
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                setLightboxIndex((prev) => (prev === imageAttachments.length - 1 ? 0 : prev + 1))
+                setLightboxIndex((prev) => (prev === lightboxImages.length - 1 ? 0 : prev + 1))
               }}
               className="absolute right-4 p-3 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-white"
             >
@@ -1348,13 +1517,13 @@ export default function ReportShow() {
 
           {/* Filename */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/80 text-sm bg-black/30 px-4 py-2 rounded-full max-w-md truncate">
-            {imageAttachments[lightboxIndex].original_filename}
+            {lightboxImages[lightboxIndex].original_filename}
           </div>
 
           {/* Thumbnail strip */}
-          {imageAttachments.length > 1 && (
+          {lightboxImages.length > 1 && (
             <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex gap-2 p-2 bg-black/30 rounded-lg">
-              {imageAttachments.map((attachment, index) => (
+              {lightboxImages.map((attachment, index) => (
                 <button
                   key={attachment.id}
                   onClick={(e) => {

@@ -52,7 +52,8 @@ class ReportViewController extends Controller
             'assignee:id,name,email,role',
             'attachments',
             'activityLogs.user:id,name,email,role',
-            'comments.user:id,name,email,role'
+            'comments.user:id,name,email,role',
+            'comments.attachments',
         ]);
         
         // Convert to array to ensure proper serialization for Inertia.js
@@ -84,7 +85,8 @@ class ReportViewController extends Controller
             'reporter:id,name,email,role',
             'assignee:id,name,email,role',
             'activityLogs.user:id,name,email,role',
-            'comments.user:id,name,email,role'
+            'comments.user:id,name,email,role',
+            'comments.attachments',
         ]);
         
         // Convert to array to ensure proper serialization for Inertia.js

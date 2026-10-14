@@ -10,6 +10,7 @@ class ReportAttachment extends Model
 {
     protected $fillable = [
         'report_id',
+        'report_comment_id',
         'filename',
         'original_filename',
         'mime_type',
@@ -20,6 +21,11 @@ class ReportAttachment extends Model
     public function report(): BelongsTo
     {
         return $this->belongsTo(Report::class);
+    }
+
+    public function comment(): BelongsTo
+    {
+        return $this->belongsTo(ReportComment::class, 'report_comment_id');
     }
 
     public function getUrl(): string

@@ -38,7 +38,7 @@ class CommentAdded extends AppNotification
             ],
             'View Report',
             '/reports/' . $this->report->uuid,
-            $this->comment->comment,
+            $this->comment->summary(),
             'Comment'
         );
     }
@@ -52,14 +52,14 @@ class CommentAdded extends AppNotification
     {
         return [
             'title' => 'New comment: ' . $this->report->title,
-            'message' => $this->commentedBy->name . ': ' . Str::limit($this->comment->comment, 120),
+            'message' => $this->commentedBy->name . ': ' . Str::limit($this->comment->summary(), 120),
             'url' => '/reports/' . $this->report->uuid,
             'report_id' => $this->report->id,
             'report_title' => $this->report->title,
             'project_name' => $this->report->project?->name,
             'commented_by' => $this->commentedBy->name,
             'commented_by_role' => $this->commentedBy->role,
-            'comment' => $this->comment->comment,
+            'comment' => $this->comment->summary(),
         ];
     }
 }
