@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="color-scheme" content="light dark">
+        <meta name="theme-color" content="#f7f7f4">
+        <title>Offline - Sidra Desk</title>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <!-- Shown by the service worker when a page cannot be loaded without a connection.
+             It is the same for everyone and never holds anyone's data. -->
+        <style>
+            :root {
+                --background: #f7f7f4;
+                --card: #ffffff;
+                --foreground: #0e1116;
+                --muted: #4a4f57;
+                --border: #e5e1d6;
+                --gold: #c19c3a;
+            }
+
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --background: #0e1116;
+                    --card: #151a21;
+                    --foreground: #f7f7f4;
+                    --muted: #9ca1a8;
+                    --border: #262b33;
+                }
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 24px;
+                background: var(--background);
+                color: var(--foreground);
+                font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            }
+
+            main {
+                width: 100%;
+                max-width: 380px;
+                padding: 32px 24px;
+                text-align: center;
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 14px;
+            }
+
+            img {
+                width: 64px;
+                height: 64px;
+                border-radius: 14px;
+            }
+
+            h1 {
+                margin: 16px 0 8px;
+                font-size: 1.375rem;
+            }
+
+            p {
+                margin: 0 0 24px;
+                color: var(--muted);
+                line-height: 1.5;
+            }
+
+            button {
+                width: 100%;
+                min-height: 44px;
+                border: 0;
+                border-radius: 8px;
+                background: var(--gold);
+                color: #0e1116;
+                font: inherit;
+                font-weight: 600;
+                cursor: pointer;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <img src="/icons/icon-192.png" alt="">
+            <h1>You're offline</h1>
+            <p>Sidra Desk needs a connection to show your issues and save changes. Nothing has been sent while you were offline.</p>
+            <button type="button" onclick="location.reload()">Try again</button>
+        </main>
+        <script>
+            // Carry on as soon as the connection is back
+            window.addEventListener('online', function () {
+                location.reload();
+            });
+        </script>
+    </body>
+</html>

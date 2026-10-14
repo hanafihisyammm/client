@@ -11,6 +11,8 @@
         "lint": "eslint . --fix",
         "test:theme": "node --test tests/browser/hardcoded-colours.test.mjs tests/browser/theme-switching.test.mjs",
         "test:theme:audit": "node tests/browser/theme-audit.mjs",
+        "test:pwa": "node --test tests/browser/service-worker.test.mjs",
+        "test:pwa:browser": "node --test tests/browser/pwa.test.mjs",
         "types": "tsc --noEmit"
     },
     "devDependencies": {

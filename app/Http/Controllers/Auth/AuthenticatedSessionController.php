@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Support\PersistentLogins;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -37,6 +38,10 @@ class AuthenticatedSessionController extends Controller
         // Clear any previous intended URL and always redirect to dashboard
         $request->session()->forget('url.intended');
 
+        if ($request->boolean('remember')) {
+            PersistentLogins::start($request, $request->user());
+        }
+
         return redirect('/dashboard');
     }
 
@@ -45,6 +50,8 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        // This browser only; others where the user ticked "Remember me" stay signed in
+        PersistentLogins::end($request);
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();

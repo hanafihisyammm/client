@@ -112,4 +112,21 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Remember me
+    |--------------------------------------------------------------------------
+    |
+    | Each browser or installed app where "Remember me" is ticked stays signed in
+    | for as long as it keeps being used (App\Support\PersistentLogins). It has to
+    | log in again only after this many days without being used at all, after
+    | logging out on it, after a password change, or if the account is deactivated.
+    |
+    */
+
+    'persistent_login' => [
+        'cookie' => 'remember_device',
+        'idle_days' => (int) env('PERSISTENT_LOGIN_IDLE_DAYS', 90),
+    ],
+
 ];

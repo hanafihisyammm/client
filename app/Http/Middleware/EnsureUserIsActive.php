@@ -25,6 +25,8 @@ class EnsureUserIsActive
         $user = $request->user();
 
         if ($user && !$user->isActive()) {
+            \App\Support\PersistentLogins::revokeAll($user);
+            \App\Support\PersistentLogins::forgetCookie();
             Auth::guard('web')->logout();
 
             if ($request->hasSession()) {

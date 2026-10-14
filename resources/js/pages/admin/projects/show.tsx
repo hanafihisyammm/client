@@ -160,8 +160,8 @@ export default function ProjectShow({ project, canManage }: Props) {
 
             <div className="space-y-6">
                 {/* Header */}
-                <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
                         <Link href="/projects">
                             <Button variant="outline" size="sm">
                                 <ArrowLeft className="h-4 w-4 mr-2" />
@@ -194,7 +194,7 @@ export default function ProjectShow({ project, canManage }: Props) {
                             )}
                         </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         {project.status === 'active' && (
                             <Link href={`/reports/create?project=${project.uuid}`}>
                                 <Button>

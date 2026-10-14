@@ -654,8 +654,8 @@ export default function ReportShow() {
 
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
             <Button variant="outline" size="sm" onClick={() => goBack('/dashboard')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
@@ -702,7 +702,7 @@ export default function ReportShow() {
               </div>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {canStartProgress && (
               <Button onClick={() => handleAction('start_progress')} disabled={loading}>
                 <Play className="w-4 h-4 mr-2" />
@@ -774,7 +774,7 @@ export default function ReportShow() {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <div className="bg-card border rounded-xl p-4">
             <div className="flex items-center gap-3">
               <div className={`p-2.5 rounded-lg ${priority.bg}`}>

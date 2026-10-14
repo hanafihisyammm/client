@@ -6,6 +6,14 @@
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <meta name="app-timezone" content="{{ config('app.business_timezone') }}">
         <meta name="color-scheme" content="light dark">
+        {{-- Installable as an app (see public/manifest.webmanifest and public/sw.js). The colour of
+             the app's title bar follows the theme; the script below switches it for dark. --}}
+        <meta name="theme-color" content="{{ ($appearance ?? 'system') == 'dark' ? '#0e1116' : '#f7f7f4' }}">
+        <link rel="manifest" href="/manifest.webmanifest">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-title" content="{{ config('app.name', 'Sidra Desk') }}">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
         {{-- The theme is decided before anything is drawn, so the page never flashes the wrong
              colours. "dark" is already on <html> from the server; "system" needs the browser. --}}
@@ -15,6 +23,7 @@
 
                 if (root.dataset.appearance === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
                     root.classList.add('dark');
+                    document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0e1116');
                 }
             })();
         </script>

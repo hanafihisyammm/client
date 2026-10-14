@@ -13,8 +13,12 @@ const CHROME = process.env.CHROME_BIN || '/Applications/Google Chrome.app/Conten
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function launch({ width = 1440, height = 1000 } = {}) {
-    const profile = mkdtempSync(join(tmpdir(), 'sidra-browser-'));
+/**
+ * Pass a profile folder to keep cookies and storage between launches (a browser restart);
+ * it is then left in place for the caller to remove.
+ */
+export async function launch({ width = 1440, height = 1000, mobile = false, profile: keptProfile = null } = {}) {
+    const profile = keptProfile ?? mkdtempSync(join(tmpdir(), 'sidra-browser-'));
     const port = 9300 + Math.floor(Math.random() * 500);
     const chrome = spawn(CHROME, [
         '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`,
@@ -54,9 +58,11 @@ export async function launch({ width = 1440, height = 1000 } = {}) {
     await send('Page.enable');
     await send('Runtime.enable');
     await send('Network.enable');
-    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: mobile ? 2 : 1, mobile });
 
     const page = {
+        /** Chrome's debugging port, to reach its other targets (such as a service worker) */
+        port,
         send,
         /** Run JavaScript in the page and get its (JSON-able) result back. */
         async evaluate(expression) {
@@ -146,8 +152,8 @@ export async function launch({ width = 1440, height = 1000 } = {}) {
         async close() {
             socket.close();
             chrome.kill();
-            await sleep(300);
-            rmSync(profile, { recursive: true, force: true });
+            await sleep(keptProfile ? 1500 : 300);
+            if (!keptProfile) rmSync(profile, { recursive: true, force: true });
         },
     };
 

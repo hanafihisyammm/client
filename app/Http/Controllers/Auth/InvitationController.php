@@ -53,6 +53,8 @@ class InvitationController extends Controller
 
         Auth::login($user);
         $request->session()->regenerate();
+        // Kept signed in, as "Remember me" is ticked by default on the login page
+        \App\Support\PersistentLogins::start($request, $user);
 
         return redirect('/dashboard')->with('flash', [
             'message' => 'Your account is set up. Welcome to ' . config('app.name') . '!',

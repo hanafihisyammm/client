@@ -10,6 +10,7 @@ use App\Models\ReportComment;
 use App\Models\User;
 use App\Observers\AuditObserver;
 use App\Support\Impersonation;
+use App\Support\PersistentLogins;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
@@ -37,6 +38,18 @@ class AppServiceProvider extends ServiceProvider
         DB::prohibitDestructiveCommands($this->app->isProduction());
 
         $this->registerAuditLogging();
+
+        // "Remember me" ends everywhere else when the password changes (from the settings page,
+        // "Forgot password" or an admin), and everywhere when the account is deactivated
+        User::updated(function (User $user) {
+            if ($user->wasChanged('password')) {
+                PersistentLogins::revokeAll($user, except: PersistentLogins::currentFor($user));
+            }
+
+            if ($user->wasChanged('deactivated_at') && $user->deactivated_at !== null) {
+                PersistentLogins::revokeAll($user);
+            }
+        });
 
         // An invited user who sets their password through "Forgot password" has also finished setting up
         Event::listen(function (PasswordReset $event) {

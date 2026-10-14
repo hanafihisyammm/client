@@ -4,13 +4,16 @@ import {
     DropdownMenuLabel,
     DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import { installApp } from '@/components/install-app';
 import { UserInfo } from '@/components/user-info';
 import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
+import { useInstallState } from '@/hooks/use-pwa';
 import { logoutUser } from '@/lib/csrf';
+import { flashError } from '@/lib/flash';
 import { edit } from '@/routes/profile';
 import { type User } from '@/types';
 import { Link, router } from '@inertiajs/react';
-import { LogOut, Settings } from 'lucide-react';
+import { Download, LogOut, Settings } from 'lucide-react';
 
 interface UserMenuContentProps {
     user: User;
@@ -18,12 +21,19 @@ interface UserMenuContentProps {
 
 export function UserMenuContent({ user }: UserMenuContentProps) {
     const cleanup = useMobileNavigation();
+    const { canPrompt, needsManualSteps } = useInstallState();
 
     const handleLogout = (e: React.MouseEvent) => {
         console.log('Logout clicked!', e); // Debug log
         e.preventDefault();
         e.stopPropagation();
-        
+
+        // Logging out has to reach the server; leaving the page offline would only look like it worked
+        if (!navigator.onLine) {
+            flashError("You're offline, so you can't log out yet. Try again when you're back online.");
+            return;
+        }
+
         // Immediate cleanup
         cleanup();
         router.flushAll();
@@ -63,6 +73,17 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                         Settings
                     </Link>
                 </DropdownMenuItem>
+                {(canPrompt || needsManualSteps) && (
+                    <DropdownMenuItem
+                        onSelect={() => {
+                            cleanup();
+                            installApp();
+                        }}
+                    >
+                        <Download className="mr-2" />
+                        Install app
+                    </DropdownMenuItem>
+                )}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <div 

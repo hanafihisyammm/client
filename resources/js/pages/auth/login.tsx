@@ -79,9 +79,12 @@ export default function Login({
                             </div>
 
                             <div className="flex items-center space-x-3">
+                                {/* On by default so people stay signed in, including in the installed app;
+                                    untick it on a shared computer */}
                                 <Checkbox
                                     id="remember"
                                     name="remember"
+                                    defaultChecked
                                     tabIndex={3}
                                 />
                                 <Label htmlFor="remember">Remember me</Label>

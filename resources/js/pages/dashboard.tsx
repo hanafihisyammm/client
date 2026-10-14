@@ -287,7 +287,7 @@ export default function Dashboard() {
 
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="eyebrow mb-1">Sidra Desk</p>
             <h1 className="text-3xl font-extrabold tracking-tight">Issues</h1>
@@ -296,7 +296,7 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {/* View Toggle */}
             <div className="flex items-center bg-muted rounded-lg p-1">
               <Button
@@ -361,9 +361,9 @@ export default function Dashboard() {
         {/* Filters */}
         <div className="space-y-3">
           {/* Search and Filter Controls */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {/* Search */}
-            <div className="relative flex-1 max-w-md">
+            <div className="relative min-w-56 flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
                 placeholder="Search issues..."
@@ -382,7 +382,7 @@ export default function Dashboard() {
             </div>
 
             {/* Filter Dropdowns */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value, overdue: 'all' }))}>
                 <SelectTrigger className={`h-9 w-auto min-w-[120px] shrink-0 whitespace-nowrap text-sm ${filters.status !== 'all' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'bg-card'}`}>
                   <SelectValue placeholder="Status" />

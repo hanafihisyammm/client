@@ -143,7 +143,7 @@ export default function Index({ logs, users, filters }: Props) {
                     description="A record of who did what in the system, and when"
                 />
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <div className="relative max-w-md min-w-40 flex-1">
                         <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
                         <Input

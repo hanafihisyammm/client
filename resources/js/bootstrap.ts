@@ -1,4 +1,5 @@
 import { router } from '@inertiajs/react';
+import { flashError } from './lib/flash';
 
 /**
  * CSRF protection.
@@ -51,5 +52,20 @@ router.on('invalid', (event) => {
     if (event.detail.response.status === 419) {
         event.preventDefault();
         window.location.reload();
+    }
+});
+
+// No answer at all from the server (offline, or the server cannot be reached): say so, so that
+// nothing looks as if it was saved or loaded. The page stays as it is and can be tried again.
+router.on('exception', (event) => {
+    const error = event.detail.exception as { response?: unknown };
+
+    if (!error?.response) {
+        event.preventDefault();
+        flashError(
+            navigator.onLine
+                ? "The server couldn't be reached, so this didn't go through. Please try again."
+                : "You're offline, so this didn't go through. Try again when you're connected.",
+        );
     }
 });

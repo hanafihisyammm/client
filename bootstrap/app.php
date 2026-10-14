@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ForceHttps;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RestorePersistentLogin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -21,16 +22,28 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->web(append: [
             ForceHttps::class,
+            // "Remember me", before anything asks who the user is
+            RestorePersistentLogin::class,
+            // Ends a session as soon as the account's password has been changed elsewhere
+            \Illuminate\Session\Middleware\AuthenticateSession::class,
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             EnsureUserIsActive::class,
         ]);
 
+        // Laravel moves authentication ahead of the group's other middleware, so "Remember me"
+        // has to be listed ahead of it too, or a remembered browser would be turned away first
+        $middleware->prependToPriorityList(
+            before: \Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests::class,
+            prepend: RestorePersistentLogin::class,
+        );
+
         $middleware->api(prepend: [
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
         $middleware->api(append: [
+            RestorePersistentLogin::class,
             EnsureUserIsActive::class,
         ]);
     })

@@ -35,6 +35,8 @@ const applyTheme = (appearance: Appearance) => {
     root.classList.toggle('dark', isDark);
     // Also switches the browser's own controls: scrollbars, date pickers, autofill
     root.style.colorScheme = isDark ? 'dark' : 'light';
+    // The installed app's title bar and the mobile browser's toolbar
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', isDark ? '#0e1116' : '#f7f7f4');
 
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: appearance }));
 };
