@@ -3,7 +3,7 @@ import { columnDragClass, useIssueDrag, type IssueStatus } from '@/hooks/use-iss
 import { Badge } from '@/components/ui/badge';
 import { isIssueOverdue, labelStyle } from '@/lib/utils';
 import { IssueTypeBadge } from '@/components/issue-type-badge';
-import { Clock, ArrowUpRight, AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { Clock, ArrowUpRight, AlertTriangle, AlertCircle, Info, User } from 'lucide-react';
 
 interface Label {
     id: number;
@@ -149,7 +149,7 @@ function IssueCard({ report, dragProps = {}, moving = false }: { report: Report;
 
             {/* Footer */}
             <div className="flex items-center justify-between text-xs text-gray-500">
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                     {/* Due Date */}
                     {report.due_date && (
                         <div className={`flex items-center gap-0.5 ${isOverdue ? 'text-red-600 font-medium' : ''}`}>
@@ -158,10 +158,17 @@ function IssueCard({ report, dragProps = {}, moving = false }: { report: Report;
                         </div>
                     )}
 
+                    {/* Created by */}
+                    {report.reporter?.name && (
+                        <div className="flex min-w-0 items-center gap-0.5" title={`Created by ${report.reporter.name}`}>
+                            <User className="w-3 h-3 shrink-0" />
+                            <span className="truncate max-w-[90px]">{report.reporter.name}</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Project */}
-                <span className="text-gray-400 truncate max-w-[80px]" title={projectName}>
+                <span className="ml-2 shrink-0 text-gray-400 truncate max-w-[80px]" title={projectName}>
                     {projectName}
                 </span>
             </div>
