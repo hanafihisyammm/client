@@ -80,7 +80,8 @@ class NotificationTest extends TestCase
         }
 
         $this->assertCount(0, $this->reporter->notifications);
-        $this->assertSame(4, $this->sentMailCount());
+        // Activity shows in the app and as alerts; it is never emailed
+        $this->assertSame(0, $this->sentMailCount());
     }
 
     public function test_people_outside_the_project_or_company_are_never_notified()
@@ -101,10 +102,10 @@ class NotificationTest extends TestCase
         $this->createIssueAsReporter();
 
         $this->assertCount(0, $this->teammate->notifications);
-        $this->assertSame(3, $this->sentMailCount());
+        $this->assertCount(1, $this->manager->notifications);
     }
 
-    public function test_in_app_notifications_are_stored_immediately_while_email_is_queued()
+    public function test_in_app_notifications_are_stored_immediately_and_nothing_is_queued_without_alerts()
     {
         config(['queue.default' => 'database']);
 
@@ -112,7 +113,8 @@ class NotificationTest extends TestCase
 
         $this->assertCount(1, $this->admin->notifications);
         $this->assertSame(0, $this->sentMailCount());
-        $this->assertSame(4, DB::table('jobs')->count());
+        // Nobody here turned alerts on, so there is no email or alert left for the queue worker
+        $this->assertSame(0, DB::table('jobs')->count());
     }
 
     public function test_a_status_change_notifies_everyone_involved_except_the_person_who_made_it()

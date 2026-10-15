@@ -39,7 +39,6 @@ before(() => {
         foreach ($paths as $index => $path) {
             $note = new class($path, $index + 1) extends App\\Notifications\\AppNotification {
                 public function __construct(private string $path, private int $number) {}
-                public function toMail($notifiable) { return new Illuminate\\Notifications\\Messages\\MailMessage; }
                 public function toArray($notifiable) { return ['title' => '${TITLE} ' . $this->number, 'message' => 'Opens ' . $this->path, 'url' => $this->path]; }
             };
             Illuminate\\Support\\Facades\\Notification::sendNow($user, $note, ['database']);

@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Models\User;
-use Illuminate\Notifications\Messages\MailMessage;
 
 class ReportDeleted extends AppNotification
 {
@@ -18,26 +17,6 @@ class ReportDeleted extends AppNotification
         public User $deletedBy
     ) {
         //
-    }
-
-    /**
-     * Get the mail representation of the notification.
-     */
-    public function toMail(object $notifiable): MailMessage
-    {
-        return $this->buildMail(
-            $notifiable,
-            'Report Deleted: ' . $this->reportTitle,
-            'Report deleted',
-            $this->deletedBy->name . ' deleted a report. It is no longer available.',
-            [
-                'Report' => $this->reportTitle,
-                'Project' => $this->projectName ?? 'Unknown Project',
-                'Deleted by' => $this->nameWithRole($this->deletedBy),
-            ],
-            'Open Issues',
-            '/dashboard'
-        );
     }
 
     /**

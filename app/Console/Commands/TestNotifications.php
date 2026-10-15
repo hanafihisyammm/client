@@ -82,7 +82,6 @@ class TestNotifications extends Command
         $this->info('✓ Report status change notification sent');
 
         $this->info("\n🎉 All notification tests completed!");
-        $this->info("Check your email inbox to verify notifications were sent.");
-        $this->info("Also check storage/logs/laravel.log for any email sending logs.");
+        $this->info("Check the in-app notifications (and phone / desktop alerts, if turned on) to verify they arrived.");
     }
 }

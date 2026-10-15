@@ -5,7 +5,6 @@ namespace App\Notifications;
 use App\Models\Report;
 use App\Models\ReportComment;
 use App\Models\User;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Str;
 
 class CommentAdded extends AppNotification
@@ -19,28 +18,6 @@ class CommentAdded extends AppNotification
         public User $commentedBy
     ) {
         //
-    }
-
-    /**
-     * Get the mail representation of the notification.
-     */
-    public function toMail(object $notifiable): MailMessage
-    {
-        return $this->buildMail(
-            $notifiable,
-            'New Comment: ' . $this->report->title,
-            'New comment on a report',
-            $this->commentedBy->name . ' added a comment.',
-            [
-                'Report' => $this->report->title,
-                'Project' => $this->report->project->name ?? 'Unknown Project',
-                'Comment by' => $this->nameWithRole($this->commentedBy),
-            ],
-            'View Report',
-            '/reports/' . $this->report->uuid,
-            $this->comment->summary(),
-            'Comment'
-        );
     }
 
     /**

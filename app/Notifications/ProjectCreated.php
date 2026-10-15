@@ -4,7 +4,6 @@ namespace App\Notifications;
 
 use App\Models\Project;
 use App\Models\User;
-use Illuminate\Notifications\Messages\MailMessage;
 
 class ProjectCreated extends AppNotification
 {
@@ -16,27 +15,6 @@ class ProjectCreated extends AppNotification
         public User $createdBy
     ) {
         //
-    }
-
-    /**
-     * Get the mail representation of the notification.
-     */
-    public function toMail(object $notifiable): MailMessage
-    {
-        return $this->buildMail(
-            $notifiable,
-            'New Project: ' . $this->project->name,
-            'A new project has been created',
-            $this->createdBy->name . ' created a new project' . $this->forCompany() . '.',
-            [
-                'Project' => $this->project->name,
-                'Client' => $this->project->company?->name,
-                'Description' => $this->project->description,
-                'Created by' => $this->nameWithRole($this->createdBy),
-            ],
-            'View Project',
-            $this->url()
-        );
     }
 
     /**

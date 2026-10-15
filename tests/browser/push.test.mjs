@@ -11,7 +11,7 @@
  * Needs the local site running from a production build with the demo data and VAPID keys
  * (php artisan webpush:vapid), and an internet connection for Google's push service:
  *   node --test tests/browser/push.test.mjs
- * The alert is sent through the push channel only, so no email goes out.
+ * The alert is sent through the push channel only.
  */
 /* global process */
 import assert from 'node:assert/strict';
@@ -37,7 +37,6 @@ const php = (code) => execFileSync('php', ['artisan', 'tinker', '--execute', cod
 const savedDevices = () => Number(php(`echo App\\Models\\User::where('email', '${EMAIL}')->first()->pushSubscriptions()->count();`));
 
 const ALERT = `new class extends App\\Notifications\\AppNotification {
-    public function toMail($notifiable) { return new Illuminate\\Notifications\\Messages\\MailMessage; }
     public function toArray($notifiable) { return ['title' => 'Browser test alert', 'message' => 'Sent by tests/browser/push.test.mjs', 'url' => '/settings/profile']; }
 }`;
 const USER = `App\\Models\\User::where('email', '${EMAIL}')->first()`;

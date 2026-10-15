@@ -13,7 +13,6 @@ use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\HttpFactory;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Testing\TestResponse;
 use Minishlink\WebPush\VAPID;
 use Minishlink\WebPush\WebPush;
@@ -253,7 +252,7 @@ class PushNotificationTest extends TestCase
 
         $this->assertContains(WebPushChannel::class, (new TestAlert)->via($withAlerts));
         $this->assertNotContains(WebPushChannel::class, (new TestAlert)->via($withoutAlerts));
-        $this->assertSame(['database', 'mail'], (new TestAlert)->via($withoutAlerts));
+        $this->assertSame(['database'], (new TestAlert)->via($withoutAlerts));
     }
 
     public function test_the_alert_carries_the_notifications_title_message_and_page()
@@ -369,11 +368,6 @@ class TestAlert extends AppNotification
 {
     public function __construct(private string $url = '/reports/0b6e')
     {
-    }
-
-    public function toMail(object $notifiable): MailMessage
-    {
-        return (new MailMessage)->line('New comment');
     }
 
     /**

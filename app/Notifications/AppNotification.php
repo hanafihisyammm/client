@@ -16,23 +16,24 @@ abstract class AppNotification extends Notification implements ShouldQueue
     use Queueable;
 
     /**
-     * Number of times the queued email is attempted before it is marked as failed.
+     * Number of times a queued delivery is attempted before it is marked as failed.
      */
     public int $tries = 3;
 
     /**
-     * Drop the queued email if the report/project was deleted before it was sent.
+     * Drop a queued delivery if the report/project was deleted before it was sent.
      */
     public bool $deleteWhenMissingModels = true;
 
     /**
-     * Get the notification's delivery channels.
+     * Get the notification's delivery channels. Activity is not emailed: it shows in the app
+     * and as a phone / desktop alert.
      *
      * @return array<int, string>
      */
     public function via(object $notifiable): array
     {
-        $channels = ['database', 'mail'];
+        $channels = ['database'];
 
         // Also as an alert on the phones and computers where the user turned alerts on
         if ($notifiable instanceof User && $notifiable->pushSubscriptions()->exists()) {
@@ -73,7 +74,7 @@ abstract class AppNotification extends Notification implements ShouldQueue
     }
 
     /**
-     * In-app notifications are stored immediately; only the email waits for the queue worker.
+     * In-app notifications are stored immediately; only the alert waits for the queue worker.
      *
      * @return array<string, string>
      */
@@ -83,7 +84,7 @@ abstract class AppNotification extends Notification implements ShouldQueue
     }
 
     /**
-     * Build an email on the shared branded layout: a heading, one intro sentence,
+     * Build an email (only invitations are emailed) on the shared branded layout: a heading, one intro sentence,
      * a list of details, an optional quoted message and one button.
      *
      * @param  array<string, string|null>  $details  label => value; empty values are left out
