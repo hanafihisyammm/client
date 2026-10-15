@@ -54,7 +54,7 @@ class AuditLogTest extends TestCase
         $this->actingAs($this->staff)->postJson('/api/reports', [
             'title' => 'Login is broken',
             'description' => 'Cannot log in',
-            'page_url' => 'https://example.com/login',
+            'page_urls' => ['https://example.com/login'],
             'project_id' => $this->project->id,
             'priority' => 'high',
         ])->assertCreated();

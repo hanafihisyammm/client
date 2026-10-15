@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowLeft, FileImage, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, Pencil } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
+import { PageUrlFields, checkPageUrls } from '@/components/page-url-fields'
 import AppLayout from '@/layouts/app-layout'
 import { getCsrfToken } from '@/lib/csrf'
 import { flashError, flashSuccess } from '@/lib/flash'
@@ -40,7 +41,7 @@ interface Report {
   issue_key?: string
   title: string
   description: string
-  page_url?: string | null
+  page_urls?: string[] | null
   project: string | { id: number; name: string; prefix?: string; uuid?: string }
   project_id?: number
   status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'reopened'
@@ -105,7 +106,7 @@ interface TimelineEntry {
 const FIELD_LABELS: Record<string, string> = {
   title: 'Title',
   description: 'Description',
-  page_url: 'Page URL',
+  page_urls: 'Page URLs',
   due_date: 'Due date',
   priority: 'Priority',
   type: 'Type',
@@ -135,7 +136,7 @@ const formatFieldValue = (field: string, value: unknown) => {
     return value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString() : 'none'
   }
   if (field === 'title') return value ? `"${shorten(String(value), 60)}"` : 'none'
-  if (field === 'page_url') return value ? shorten(String(value), 80) : 'none'
+  if (field === 'page_urls') return Array.isArray(value) && value.length > 0 ? shorten(value.join(', '), 120) : 'none'
   return humanize(value)
 }
 
@@ -256,7 +257,8 @@ const severityConfig = {
 const editDataFor = (report: Report) => ({
   title: report.title,
   description: report.description,
-  page_url: report.page_url || '',
+  // Always at least one row to type into
+  page_urls: report.page_urls?.length ? [...report.page_urls] : [''],
   priority: report.priority,
   type: (report.type || 'bug') as 'bug' | 'feature',
   // Empty for a feature: the server then restores the severity it had as a bug, or uses Minor
@@ -268,7 +270,7 @@ const editDataFor = (report: Report) => ({
 // What the Edit Issue form sends: severity only for bugs, and only when one is chosen
 const editPayload = ({ severity, ...data }: ReturnType<typeof editDataFor>) => ({
   ...data,
-  page_url: data.page_url.trim() || null,
+  page_urls: data.page_urls.map(url => url.trim()).filter(Boolean),
   due_date: data.due_date || null,
   ...(data.type === 'bug' && severity ? { severity } : {}),
 })
@@ -305,6 +307,9 @@ export default function ReportShow() {
   const [resolutionSummary, setResolutionSummary] = useState('')
   const [reopenReason, setReopenReason] = useState('')
   const [editData, setEditData] = useState(() => editDataFor(report))
+  const [editErrors, setEditErrors] = useState<Record<string, string[]>>({})
+  // Once an issue names a page it cannot be left with none; older issues may have none
+  const hasPageUrls = (report.page_urls?.length ?? 0) > 0
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   // The images the lightbox steps through: the issue's own, or those of one comment
@@ -364,6 +369,18 @@ export default function ReportShow() {
   const canEdit = abilities.edit
   const canComment = abilities.comment
 
+  // Check the page URLs here first; blank rows are dropped so the rows match any server errors
+  const saveEdit = () => {
+    const { urls, errors } = checkPageUrls(editData.page_urls, hasPageUrls)
+    setEditData(prev => ({ ...prev, page_urls: urls.length > 0 ? urls : [''] }))
+    setEditErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      flashError(Object.values(errors)[0][0])
+      return
+    }
+    handleAction('update_report', editPayload({ ...editData, page_urls: urls }))
+  }
+
   const handleAction = async (action: string, data?: Record<string, any>) => {
     setLoading(true)
     try {
@@ -399,7 +416,9 @@ export default function ReportShow() {
         setResolutionSummary('')
         setReopenReason('')
         setEditData(editDataFor(result.report))
+        setEditErrors({})
       } else {
+        if (action === 'update_report' && result.errors) setEditErrors(result.errors)
         flashError(result.message || 'Action failed')
       }
     } catch (error) {
@@ -887,16 +906,14 @@ export default function ReportShow() {
                     )}
                     <div className="space-y-2">
                       <Label htmlFor="edit-issue-page-url">
-                        Page URL{report.page_url && <span className="text-red-600"> *</span>}
+                        Page URL{hasPageUrls && <span className="text-red-600"> *</span>}
                       </Label>
-                      <Input
-                        id="edit-issue-page-url"
-                        type="url"
-                        inputMode="url"
-                        value={editData.page_url}
-                        onChange={(e) => setEditData(prev => ({ ...prev, page_url: e.target.value }))}
-                        placeholder="https://example.com/checkout"
-                        required={!!report.page_url}
+                      <PageUrlFields
+                        idPrefix="edit-issue-page-url"
+                        urls={editData.page_urls}
+                        onChange={(page_urls) => setEditData(prev => ({ ...prev, page_urls }))}
+                        errors={editErrors}
+                        required={hasPageUrls}
                       />
                     </div>
                     <Textarea
@@ -906,12 +923,13 @@ export default function ReportShow() {
                       className="font-mono text-sm"
                     />
                     <div className="flex gap-2">
-                      <Button onClick={() => handleAction('update_report', editPayload(editData))} disabled={loading}>
+                      <Button onClick={saveEdit} disabled={loading}>
                         {loading ? 'Saving...' : 'Save Changes'}
                       </Button>
                       <Button variant="outline" onClick={() => {
                         setIsEditing(false)
                         setEditData(editDataFor(report))
+                        setEditErrors({})
                       }}>
                         Cancel
                       </Button>
@@ -919,19 +937,25 @@ export default function ReportShow() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {report.page_url && (
+                    {hasPageUrls && (
                       <div className="flex items-start gap-2 rounded-lg border bg-gray-50 px-3 py-2 text-sm">
                         <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-                        <span className="shrink-0 text-gray-500">Page URL</span>
-                        <a
-                          href={report.page_url}
-                          target="_blank"
-                          rel="noopener noreferrer nofollow"
-                          className="min-w-0 break-all text-blue-600 hover:underline"
-                        >
-                          {report.page_url}
-                        </a>
-                        <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
+                        <span className="shrink-0 text-gray-500">{report.page_urls!.length > 1 ? 'Page URLs' : 'Page URL'}</span>
+                        <ul className="min-w-0 space-y-1">
+                          {report.page_urls!.map(url => (
+                            <li key={url} className="flex items-start gap-1.5">
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer nofollow"
+                                className="min-w-0 break-all text-blue-600 hover:underline"
+                              >
+                                {url}
+                              </a>
+                              <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                     <div className="prose prose-sm max-w-none">

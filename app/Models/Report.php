@@ -65,7 +65,7 @@ class Report extends Model
     protected $fillable = [
         'title',
         'description',
-        'page_url',
+        'page_urls',
         'project_id',
         'status',
         'reported_by',
@@ -131,6 +131,7 @@ class Report extends Model
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
             'due_date' => 'date',
+            'page_urls' => 'array',
             'first_response_at' => 'datetime',
             'resolved_at' => 'datetime',
             'response_sla_breached' => 'boolean',

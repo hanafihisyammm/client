@@ -105,7 +105,7 @@ class MalaysiaDayBoundaryTest extends TestCase
     {
         $this->atMalaysiaTime('2026-10-16 00:30:00');
 
-        $payload = ['title' => 'Fix it', 'description' => 'Broken', 'page_url' => 'https://example.com/login', 'project_id' => $this->project->id, 'priority' => 'high'];
+        $payload = ['title' => 'Fix it', 'description' => 'Broken', 'page_urls' => ['https://example.com/login'], 'project_id' => $this->project->id, 'priority' => 'high'];
 
         $this->actingAs($this->admin)->postJson('/api/reports', $payload + ['due_date' => '2026-10-16'])->assertCreated();
         // Yesterday in Malaysia, although it is still "today" in UTC

@@ -174,7 +174,7 @@ class DemoDataSeeder extends Seeder
         $report = Report::create([
             'title' => $title,
             'description' => "Reported by {$reporter->name} for {$project->name}.\n\nSteps to reproduce and expected behaviour would be written here.",
-            'page_url' => 'https://' . Str::slug($project->name) . '.example.com/',
+            'page_urls' => ['https://' . Str::slug($project->name) . '.example.com/'],
             'project_id' => $project->id,
             'priority' => $priority,
             'severity' => ['urgent' => 'critical', 'high' => 'major', 'medium' => 'minor', 'low' => 'trivial'][$priority],

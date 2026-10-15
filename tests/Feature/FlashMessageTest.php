@@ -127,7 +127,7 @@ class FlashMessageTest extends TestCase
         $this->actingAs($this->staff)->postJson('/api/reports', [
             'title' => 'New issue',
             'description' => 'Details',
-            'page_url' => 'https://example.com/login',
+            'page_urls' => ['https://example.com/login'],
             'project_id' => $this->project->id,
             'priority' => 'low',
         ])->assertCreated()->assertJsonPath('message', 'Issue created successfully.');

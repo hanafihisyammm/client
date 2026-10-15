@@ -11,6 +11,7 @@ import {
   AlertCircle, Info, FileImage, File, Calendar, Link2
 } from 'lucide-react'
 import { SearchableSelect } from '@/components/searchable-select'
+import { PageUrlFields, checkPageUrls } from '@/components/page-url-fields'
 import AppLayout from '@/layouts/app-layout'
 import { flashError, flashSuccess } from '@/lib/flash'
 import { goBack } from '@/lib/navigation'
@@ -29,16 +30,6 @@ interface PageProps extends Record<string, unknown> {
 }
 
 type IssueType = 'bug' | 'feature'
-
-// A full web address (http or https), as copied from the browser's address bar
-const isPageUrl = (value: string) => {
-  try {
-    const url = new URL(value.trim())
-    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== ''
-  } catch {
-    return false
-  }
-}
 
 const priorityOptions = [
   { value: 'low', label: 'Low', icon: Info, color: 'text-blue-600', bg: 'bg-blue-50', description: 'Nice to have' },
@@ -59,7 +50,8 @@ export default function CreateReport() {
   const [issueType, setIssueType] = useState<IssueType>('bug')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [pageUrl, setPageUrl] = useState('')
+  const [pageUrls, setPageUrls] = useState<string[]>([''])
+  const hasPageUrl = pageUrls.some(url => url.trim())
   const [projectId, setProjectId] = useState<string>('')
   const [dueDate, setDueDate] = useState('')
   const [priority, setPriority] = useState('medium')
@@ -99,14 +91,11 @@ export default function CreateReport() {
         return
       }
 
-      if (!pageUrl.trim()) {
-        setErrors({ page_url: ['Page URL is required'] })
-        setLoading(false)
-        return
-      }
-
-      if (!isPageUrl(pageUrl)) {
-        setErrors({ page_url: ['Enter the full page address, starting with http:// or https://'] })
+      // Blank rows are dropped, so the rows on screen line up with any errors the server sends back
+      const pageUrlCheck = checkPageUrls(pageUrls, true)
+      setPageUrls(pageUrlCheck.urls.length > 0 ? pageUrlCheck.urls : [''])
+      if (Object.keys(pageUrlCheck.errors).length > 0) {
+        setErrors(pageUrlCheck.errors)
         setLoading(false)
         return
       }
@@ -114,7 +103,9 @@ export default function CreateReport() {
       const submitData = new FormData()
       submitData.append('title', title)
       submitData.append('description', description)
-      submitData.append('page_url', pageUrl.trim())
+      pageUrlCheck.urls.forEach((url, index) => {
+        submitData.append(`page_urls[${index}]`, url)
+      })
       submitData.append('project_id', projectId)
       submitData.append('priority', priority)
       submitData.append('type', issueType)
@@ -388,26 +379,12 @@ export default function CreateReport() {
                     <Link2 className="w-4 h-4 text-gray-400" />
                     <span>Page URL <span className="text-red-600">*</span></span>
                   </Label>
-                  <Input
-                    id="page_url"
-                    type="url"
-                    inputMode="url"
-                    value={pageUrl}
-                    onChange={(e) => setPageUrl(e.target.value)}
-                    placeholder="https://example.com/checkout"
-                    className="h-11"
-                    aria-invalid={errors.page_url ? true : undefined}
-                    aria-describedby="page_url-hint"
-                    required
-                  />
-                  <p id="page_url-hint" className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500">
                     {issueType === 'bug'
-                      ? 'Copy the address of the page where the problem happens from your browser.'
-                      : 'Copy the address of the page this feature is for from your browser.'}
+                      ? 'Copy the address of the page where the problem happens from your browser. Add more if it happens on other pages too.'
+                      : 'Copy the address of the page this feature is for from your browser. Add more if it is for other pages too.'}
                   </p>
-                  {errors.page_url && (
-                    <p className="text-red-600 text-sm">{errors.page_url[0]}</p>
-                  )}
+                  <PageUrlFields urls={pageUrls} onChange={setPageUrls} errors={errors} required />
                 </div>
               </div>
 
@@ -607,16 +584,16 @@ export default function CreateReport() {
             <div className="space-y-3">
               <Button
                 onClick={handleSubmit}
-                disabled={loading || !title.trim() || !description.trim() || !projectId || !pageUrl.trim()}
+                disabled={loading || !title.trim() || !description.trim() || !projectId || !hasPageUrl}
                 className="w-full h-11"
               >
                 {loading ? 'Creating...' : 'Create Issue'}
               </Button>
-              {!loading && (!projectId || !title.trim() || !description.trim() || !pageUrl.trim()) && (
+              {!loading && (!projectId || !title.trim() || !description.trim() || !hasPageUrl) && (
                 <p className="text-center text-xs text-muted-foreground">
                   {!hasActiveProject
                     ? 'No active project to create the issue in.'
-                    : `Still needed: ${[!projectId && 'project', !title.trim() && 'summary', !pageUrl.trim() && 'page URL', !description.trim() && 'description'].filter(Boolean).join(', ')}.`}
+                    : `Still needed: ${[!projectId && 'project', !title.trim() && 'summary', !hasPageUrl && 'page URL', !description.trim() && 'description'].filter(Boolean).join(', ')}.`}
                 </p>
               )}
               <Button
