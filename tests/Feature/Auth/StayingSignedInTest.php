@@ -129,6 +129,34 @@ class StayingSignedInTest extends TestCase
         $this->assertSame($logins, AuditLog::where('action', 'auth.login')->count());
     }
 
+    public function test_a_page_opened_after_the_session_expired_keeps_its_headers_small()
+    {
+        // Opening the app from a notification hours later loads a whole page and sets the session,
+        // CSRF and "Remember me" cookies at once. With a preload Link header as well, that passed
+        // nginx's default 4 KB limit for a reply's headers, and the person saw "502 Bad Gateway".
+        $this->assertNotContains(
+            \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+            app(\Illuminate\Contracts\Http\Kernel::class)->getMiddlewareGroups()['web'],
+        );
+
+        $user = User::factory()->withoutTwoFactor()->create();
+        $response = $this->logIn($user, remember: true);
+        $session = $this->sessionId($response);
+        $device = $this->deviceCookie($response);
+
+        $this->travel(121)->minutes();
+
+        $restored = $this->asNewRequest()
+            ->withCookie(config('session.cookie'), $session)
+            ->withDevice($device)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertHeaderMissing('Link');
+
+        $this->assertNotNull($restored->getCookie(PersistentLogins::cookieName(), false), 'The "Remember me" cookie is renewed');
+        $this->assertLessThan(3072, strlen((string) $restored->baseResponse->headers), 'Well inside nginx\'s 4 KB header buffer');
+    }
+
     public function test_after_a_browser_restart_the_user_is_still_signed_in()
     {
         $user = User::factory()->withoutTwoFactor()->create();

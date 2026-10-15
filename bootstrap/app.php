@@ -8,7 +8,6 @@ use App\Http\Middleware\RestorePersistentLogin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -28,7 +27,9 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Session\Middleware\AuthenticateSession::class,
             HandleAppearance::class,
             HandleInertiaRequests::class,
-            AddLinkHeadersForPreloadedAssets::class,
+            // No AddLinkHeadersForPreloadedAssets: the page already lists its preloads in the HTML,
+            // and the header (one entry per script) pushed responses past nginx's 4 KB header
+            // limit when "Remember me" also set its cookies, which showed as a 502 Bad Gateway
             EnsureUserIsActive::class,
         ]);
 
