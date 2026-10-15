@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Head, router, usePage } from '@inertiajs/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -208,6 +208,24 @@ export default function CreateReport() {
     addFiles(files)
   }, [attachments])
 
+  // A screenshot pasted anywhere on the page is attached, so it does not have
+  // to be saved to a file first. Text pastes are left alone.
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files ?? [])
+      if (files.length === 0) return
+      e.preventDefault()
+      // Clipboard images all arrive as "image.png"; give each a distinct name
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+      addFiles(files.map((file, i) => file.name === 'image.png'
+        ? new window.File([file], `screenshot-${stamp}${files.length > 1 ? `-${i + 1}` : ''}.png`, { type: file.type })
+        : file
+      ))
+    }
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [attachments])
+
   const getFileIcon = (file: File) => {
     if (file.type === 'application/pdf') {
       return <File className="w-5 h-5 text-red-500" />
@@ -394,7 +412,7 @@ export default function CreateReport() {
                       <Upload className={`w-6 h-6 ${isDragging ? 'text-blue-600' : 'text-gray-400'}`} />
                     </div>
                     <p className="text-sm text-gray-700 font-medium mb-1">
-                      Drop files here or click to upload
+                      Drop files here, click to upload, or paste a screenshot
                     </p>
                     <p className="text-xs text-gray-500">
                       PNG, JPG, GIF, PDF up to 5MB (max 5 files)
