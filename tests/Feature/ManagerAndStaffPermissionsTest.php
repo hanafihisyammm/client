@@ -237,6 +237,7 @@ class ManagerAndStaffPermissionsTest extends TestCase
             $this->actingAs($this->staff)->postJson('/api/reports', [
                 'title' => 'From staff',
                 'description' => 'Details',
+                'page_url' => 'https://example.com/login',
                 'project_id' => $project->id,
                 'priority' => 'low',
             ])->assertCreated();
@@ -245,7 +246,7 @@ class ManagerAndStaffPermissionsTest extends TestCase
 
     public function test_staff_create_issues_only_in_their_own_active_projects()
     {
-        $payload = ['title' => 'New issue', 'description' => 'Details', 'priority' => 'low'];
+        $payload = ['title' => 'New issue', 'description' => 'Details', 'page_url' => 'https://example.com/login', 'priority' => 'low'];
 
         $this->actingAs($this->staff)->postJson('/api/reports', $payload + ['project_id' => $this->website->id])
             ->assertCreated()
@@ -323,7 +324,7 @@ class ManagerAndStaffPermissionsTest extends TestCase
 
     public function test_a_feature_request_is_saved_as_a_feature_with_no_severity()
     {
-        $payload = ['title' => 'Dark mode', 'description' => 'Please add it', 'project_id' => $this->website->id, 'priority' => 'low'];
+        $payload = ['title' => 'Dark mode', 'description' => 'Please add it', 'page_url' => 'https://example.com/login', 'project_id' => $this->website->id, 'priority' => 'low'];
 
         // Even if a severity is sent along, a feature does not keep one
         $this->actingAs($this->staff)->postJson('/api/reports', $payload + ['type' => 'feature', 'severity' => 'major'])
@@ -346,7 +347,7 @@ class ManagerAndStaffPermissionsTest extends TestCase
 
     public function test_a_bug_keeps_its_severity_and_defaults_to_minor()
     {
-        $payload = ['description' => 'Broken', 'project_id' => $this->website->id, 'priority' => 'high'];
+        $payload = ['description' => 'Broken', 'page_url' => 'https://example.com/login', 'project_id' => $this->website->id, 'priority' => 'high'];
 
         $this->actingAs($this->staff)->postJson('/api/reports', $payload + ['title' => 'Crash', 'type' => 'bug', 'severity' => 'critical'])
             ->assertCreated()
@@ -415,7 +416,7 @@ class ManagerAndStaffPermissionsTest extends TestCase
     public function test_a_feature_that_never_had_a_severity_becomes_a_minor_bug()
     {
         $this->actingAs($this->staff)->postJson('/api/reports', [
-            'title' => 'Dark mode', 'description' => 'Please add it', 'project_id' => $this->website->id, 'priority' => 'low', 'type' => 'feature',
+            'title' => 'Dark mode', 'description' => 'Please add it', 'page_url' => 'https://example.com/login', 'project_id' => $this->website->id, 'priority' => 'low', 'type' => 'feature',
         ])->assertCreated();
         $feature = Report::where('title', 'Dark mode')->firstOrFail();
 

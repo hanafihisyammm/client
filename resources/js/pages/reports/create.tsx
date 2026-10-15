@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DatePicker } from '@/components/ui/date-picker'
 import {
   Upload, X, ArrowLeft, Bug, Sparkles, AlertTriangle, ArrowUpRight,
-  AlertCircle, Info, FileImage, File, Calendar
+  AlertCircle, Info, FileImage, File, Calendar, Link2
 } from 'lucide-react'
 import { SearchableSelect } from '@/components/searchable-select'
 import AppLayout from '@/layouts/app-layout'
@@ -30,6 +30,16 @@ interface PageProps extends Record<string, unknown> {
 
 type IssueType = 'bug' | 'feature'
 
+// A full web address (http or https), as copied from the browser's address bar
+const isPageUrl = (value: string) => {
+  try {
+    const url = new URL(value.trim())
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== ''
+  } catch {
+    return false
+  }
+}
+
 const priorityOptions = [
   { value: 'low', label: 'Low', icon: Info, color: 'text-blue-600', bg: 'bg-blue-50', description: 'Nice to have' },
   { value: 'medium', label: 'Medium', icon: AlertCircle, color: 'text-yellow-600', bg: 'bg-yellow-50', description: 'Should be fixed soon' },
@@ -49,6 +59,7 @@ export default function CreateReport() {
   const [issueType, setIssueType] = useState<IssueType>('bug')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [pageUrl, setPageUrl] = useState('')
   const [projectId, setProjectId] = useState<string>('')
   const [dueDate, setDueDate] = useState('')
   const [priority, setPriority] = useState('medium')
@@ -88,9 +99,22 @@ export default function CreateReport() {
         return
       }
 
+      if (!pageUrl.trim()) {
+        setErrors({ page_url: ['Page URL is required'] })
+        setLoading(false)
+        return
+      }
+
+      if (!isPageUrl(pageUrl)) {
+        setErrors({ page_url: ['Enter the full page address, starting with http:// or https://'] })
+        setLoading(false)
+        return
+      }
+
       const submitData = new FormData()
       submitData.append('title', title)
       submitData.append('description', description)
+      submitData.append('page_url', pageUrl.trim())
       submitData.append('project_id', projectId)
       submitData.append('priority', priority)
       submitData.append('type', issueType)
@@ -358,6 +382,33 @@ export default function CreateReport() {
                     <p className="text-red-600 text-sm">{errors.title[0]}</p>
                   )}
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="page_url" className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <Link2 className="w-4 h-4 text-gray-400" />
+                    <span>Page URL <span className="text-red-600">*</span></span>
+                  </Label>
+                  <Input
+                    id="page_url"
+                    type="url"
+                    inputMode="url"
+                    value={pageUrl}
+                    onChange={(e) => setPageUrl(e.target.value)}
+                    placeholder="https://example.com/checkout"
+                    className="h-11"
+                    aria-invalid={errors.page_url ? true : undefined}
+                    aria-describedby="page_url-hint"
+                    required
+                  />
+                  <p id="page_url-hint" className="text-xs text-gray-500">
+                    {issueType === 'bug'
+                      ? 'Copy the address of the page where the problem happens from your browser.'
+                      : 'Copy the address of the page this feature is for from your browser.'}
+                  </p>
+                  {errors.page_url && (
+                    <p className="text-red-600 text-sm">{errors.page_url[0]}</p>
+                  )}
+                </div>
               </div>
 
               {/* Description */}
@@ -556,16 +607,16 @@ export default function CreateReport() {
             <div className="space-y-3">
               <Button
                 onClick={handleSubmit}
-                disabled={loading || !title.trim() || !description.trim() || !projectId}
+                disabled={loading || !title.trim() || !description.trim() || !projectId || !pageUrl.trim()}
                 className="w-full h-11"
               >
                 {loading ? 'Creating...' : 'Create Issue'}
               </Button>
-              {!loading && (!projectId || !title.trim() || !description.trim()) && (
+              {!loading && (!projectId || !title.trim() || !description.trim() || !pageUrl.trim()) && (
                 <p className="text-center text-xs text-muted-foreground">
                   {!hasActiveProject
                     ? 'No active project to create the issue in.'
-                    : `Still needed: ${[!projectId && 'project', !title.trim() && 'summary', !description.trim() && 'description'].filter(Boolean).join(', ')}.`}
+                    : `Still needed: ${[!projectId && 'project', !title.trim() && 'summary', !pageUrl.trim() && 'page URL', !description.trim() && 'description'].filter(Boolean).join(', ')}.`}
                 </p>
               )}
               <Button

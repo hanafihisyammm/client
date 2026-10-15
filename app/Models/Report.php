@@ -65,6 +65,7 @@ class Report extends Model
     protected $fillable = [
         'title',
         'description',
+        'page_url',
         'project_id',
         'status',
         'reported_by',

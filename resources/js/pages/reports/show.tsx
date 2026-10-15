@@ -40,6 +40,7 @@ interface Report {
   issue_key?: string
   title: string
   description: string
+  page_url?: string | null
   project: string | { id: number; name: string; prefix?: string; uuid?: string }
   project_id?: number
   status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'reopened'
@@ -104,6 +105,7 @@ interface TimelineEntry {
 const FIELD_LABELS: Record<string, string> = {
   title: 'Title',
   description: 'Description',
+  page_url: 'Page URL',
   due_date: 'Due date',
   priority: 'Priority',
   type: 'Type',
@@ -133,6 +135,7 @@ const formatFieldValue = (field: string, value: unknown) => {
     return value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString() : 'none'
   }
   if (field === 'title') return value ? `"${shorten(String(value), 60)}"` : 'none'
+  if (field === 'page_url') return value ? shorten(String(value), 80) : 'none'
   return humanize(value)
 }
 
@@ -253,6 +256,7 @@ const severityConfig = {
 const editDataFor = (report: Report) => ({
   title: report.title,
   description: report.description,
+  page_url: report.page_url || '',
   priority: report.priority,
   type: (report.type || 'bug') as 'bug' | 'feature',
   // Empty for a feature: the server then restores the severity it had as a bug, or uses Minor
@@ -264,6 +268,7 @@ const editDataFor = (report: Report) => ({
 // What the Edit Issue form sends: severity only for bugs, and only when one is chosen
 const editPayload = ({ severity, ...data }: ReturnType<typeof editDataFor>) => ({
   ...data,
+  page_url: data.page_url.trim() || null,
   due_date: data.due_date || null,
   ...(data.type === 'bug' && severity ? { severity } : {}),
 })
@@ -880,6 +885,20 @@ export default function ReportShow() {
                           : 'Leave Severity unchosen to restore the one it had as a bug, or Minor if it never had one.'}
                       </p>
                     )}
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-issue-page-url">
+                        Page URL{report.page_url && <span className="text-red-600"> *</span>}
+                      </Label>
+                      <Input
+                        id="edit-issue-page-url"
+                        type="url"
+                        inputMode="url"
+                        value={editData.page_url}
+                        onChange={(e) => setEditData(prev => ({ ...prev, page_url: e.target.value }))}
+                        placeholder="https://example.com/checkout"
+                        required={!!report.page_url}
+                      />
+                    </div>
                     <Textarea
                       value={editData.description}
                       onChange={(e) => setEditData(prev => ({ ...prev, description: e.target.value }))}
@@ -899,8 +918,25 @@ export default function ReportShow() {
                     </div>
                   </div>
                 ) : (
-                  <div className="prose prose-sm max-w-none">
-                    <p className="whitespace-pre-wrap text-gray-700 leading-relaxed">{report.description}</p>
+                  <div className="space-y-4">
+                    {report.page_url && (
+                      <div className="flex items-start gap-2 rounded-lg border bg-gray-50 px-3 py-2 text-sm">
+                        <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                        <span className="shrink-0 text-gray-500">Page URL</span>
+                        <a
+                          href={report.page_url}
+                          target="_blank"
+                          rel="noopener noreferrer nofollow"
+                          className="min-w-0 break-all text-blue-600 hover:underline"
+                        >
+                          {report.page_url}
+                        </a>
+                        <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="prose prose-sm max-w-none">
+                      <p className="whitespace-pre-wrap text-gray-700 leading-relaxed">{report.description}</p>
+                    </div>
                   </div>
                 )}
               </div>

@@ -133,6 +133,7 @@ class TenantIsolationTest extends TestCase
         $this->actingAs($this->{$who})->postJson('/api/reports', [
             'title' => 'Sneaky',
             'description' => 'x',
+            'page_url' => 'https://example.com/login',
             'project_id' => $this->acmeProject->id,
             'priority' => 'low',
         ])->assertForbidden();

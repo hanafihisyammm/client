@@ -62,6 +62,7 @@ class NotificationTest extends TestCase
         $this->actingAs($this->reporter)->postJson('/api/reports', [
             'title' => 'Login is broken',
             'description' => 'Cannot log in',
+            'page_url' => 'https://example.com/login',
             'project_id' => $this->project->id,
             'priority' => 'high',
         ])->assertCreated();

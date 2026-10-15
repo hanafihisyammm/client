@@ -44,6 +44,7 @@ class AttachmentUploadTest extends TestCase
         return $this->actingAs($as ?? $this->staff)->post('/api/reports', [
             'title' => 'Checkout is broken',
             'description' => 'See the screenshots',
+            'page_url' => 'https://example.com/checkout',
             'project_id' => $this->project->id,
             'priority' => 'high',
             'attachments' => $files,

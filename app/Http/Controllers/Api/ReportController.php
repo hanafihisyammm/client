@@ -32,6 +32,9 @@ class ReportController extends Controller
     /** What may be posted with a comment: images only, with the same size limit */
     private const COMMENT_IMAGE_RULES = 'file|mimes:jpeg,jpg,png,gif,webp|max:5120';
 
+    /** The address of the page an issue was seen on: a full web address, as copied from the browser */
+    private const PAGE_URL_RULES = ['required', 'string', 'max:2048', 'url:http,https'];
+
     public function index(Request $request): JsonResponse
     {
         $user = Auth::user();
@@ -80,6 +83,8 @@ class ReportController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
+            // The page the issue was seen on, so it can be found and debugged
+            'page_url' => self::PAGE_URL_RULES,
             'project_id' => 'required|exists:projects,id',
             // "Today" is the Malaysian calendar day, not the UTC one
             'due_date' => 'nullable|date|after_or_equal:' . Report::businessToday(),
@@ -91,7 +96,7 @@ class ReportController extends Controller
             'label_ids.*' => 'exists:labels,id',
             'attachments' => 'nullable|array|max:5',
             'attachments.*' => self::ATTACHMENT_RULES,
-        ]);
+        ], [], ['page_url' => 'page URL']);
 
         $user = Auth::user();
         
@@ -126,6 +131,7 @@ class ReportController extends Controller
             $report = Report::create([
                 'title' => $validated['title'],
                 'description' => $validated['description'],
+                'page_url' => $validated['page_url'],
                 'project' => $project->name,
                 'project_id' => $validated['project_id'],
                 'due_date' => $validated['due_date'] ?? null,
@@ -347,6 +353,11 @@ class ReportController extends Controller
                 $rules = [
                     'title' => 'required|string|max:255',
                     'description' => 'required|string',
+                    // Left out, the page URL stays as it is. Issues from before it was asked for
+                    // may stay without one, but once an issue has a URL it cannot be cleared.
+                    'page_url' => $report->page_url === null
+                        ? ['nullable', ...array_slice(self::PAGE_URL_RULES, 1)]
+                        : ['sometimes', ...self::PAGE_URL_RULES],
                     'due_date' => 'nullable|date',
                     'priority' => 'required|in:low,medium,high,urgent',
                     'type' => 'nullable|in:' . implode(',', Report::TYPES),
@@ -361,7 +372,7 @@ class ReportController extends Controller
                     $rules['status'] = ['required', Rule::in(Report::STATUSES)];
                 }
 
-                $validated = $request->validate($rules);
+                $validated = $request->validate($rules, [], ['page_url' => 'page URL']);
 
                 // The due date can be cleared or left as it is, even if it has already passed,
                 // but a new date has to be today or later (in Malaysia), as when creating an issue
@@ -377,6 +388,7 @@ class ReportController extends Controller
                 $oldValues = [
                     'title' => $report->title,
                     'description' => $report->description,
+                    'page_url' => $report->page_url,
                     'due_date' => $report->due_date,
                     'priority' => $report->priority,
                     'type' => $report->type,
@@ -396,6 +408,7 @@ class ReportController extends Controller
                 $updateData = [
                     'title' => $validated['title'],
                     'description' => $validated['description'],
+                    'page_url' => $validated['page_url'] ?? $report->page_url,
                     'due_date' => $newDueDate,
                     'priority' => $validated['priority'],
                     'type' => $type,
@@ -410,6 +423,7 @@ class ReportController extends Controller
                 $newValues = [
                     'title' => $validated['title'],
                     'description' => $validated['description'],
+                    'page_url' => $validated['page_url'] ?? $report->page_url,
                     'due_date' => $newDueDate,
                     'priority' => $validated['priority'],
                     'type' => $type,

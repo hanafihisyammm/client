@@ -292,7 +292,7 @@ class ImpersonationTest extends TestCase
 
         // The browser calls the API with its session, as the app's own pages do
         $this->withHeader('Origin', 'http://localhost')->postJson('/api/reports', [
-            'title' => 'Raised while impersonating', 'description' => 'Test', 'project_id' => $this->acmeProject->id, 'priority' => 'low',
+            'title' => 'Raised while impersonating', 'description' => 'Test', 'page_url' => 'https://example.com/login', 'project_id' => $this->acmeProject->id, 'priority' => 'low',
         ])->assertCreated();
 
         $entry = AuditLog::where('action', 'report.created')->firstOrFail();
