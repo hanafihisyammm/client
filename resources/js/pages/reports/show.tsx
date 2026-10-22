@@ -622,6 +622,18 @@ export default function ReportShow() {
     }
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
+  // Every time the issue was resolved, newest first. The issue only stores the latest
+  // summary, so the earlier ones come from the activity log.
+  const resolutions = activityLogs
+    .filter(log => log.action === 'status_changed' && log.new_values?.status === 'resolved' && log.new_values?.resolution_summary)
+    .map(log => ({ id: log.id, summary: String(log.new_values?.resolution_summary), user: log.user as ActivityLog['user'] | null, created_at: log.created_at }))
+    // Logs from the same second fall back to the order they were written in
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime() || b.id - a.id)
+  // Issues resolved before resolutions were logged still show their summary
+  if (resolutions.length === 0 && report.resolution_summary) {
+    resolutions.push({ id: 0, summary: report.resolution_summary, user: null, created_at: '' })
+  }
+
   return (
     <AppLayout>
       <Head title={report.issue_key ? `${report.issue_key} - ${report.title}` : report.title} />
@@ -966,15 +978,29 @@ export default function ReportShow() {
               </div>
             </div>
 
-            {/* Resolution Summary */}
-            {report.resolution_summary && (
+            {/* Resolution Summary: the latest first, then any earlier ones from before a reopen */}
+            {resolutions.length > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-xl overflow-hidden">
                 <div className="px-5 py-4 border-b border-green-200 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <h2 className="font-medium text-green-800">Resolution</h2>
+                  <h2 className="font-medium text-green-800">{resolutions.length > 1 ? 'Resolutions' : 'Resolution'}</h2>
+                  {resolutions.length > 1 && (
+                    <span className="text-xs text-green-700 ml-1">{resolutions.length}</span>
+                  )}
                 </div>
-                <div className="p-5">
-                  <p className="text-sm text-green-900 whitespace-pre-wrap">{report.resolution_summary}</p>
+                <div className="divide-y divide-green-200">
+                  {resolutions.map((resolution, index) => (
+                    <div key={resolution.id} className="p-5">
+                      {(resolution.user || resolutions.length > 1) && (
+                        <p className="mb-1.5 text-xs text-green-700">
+                          {index === 0 ? (resolutions.length > 1 ? 'Latest' : 'Resolved') : 'Earlier'}
+                          {resolution.user && <> by <span className="font-medium">{resolution.user.name}</span></>}
+                          {resolution.created_at && <> · {formatDate(resolution.created_at)}</>}
+                        </p>
+                      )}
+                      <p className="text-sm text-green-900 whitespace-pre-wrap">{resolution.summary}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
