@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Head, usePage, router } from '@inertiajs/react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   Plus, Search, FileText, User as UserIcon, Calendar, ChevronUp, ChevronDown,
   ChevronsUpDown, Eye, Edit, LayoutGrid, List, Clock, AlertTriangle,
-  ArrowUpRight, AlertCircle, Info, CheckCircle2, RotateCcw, X, Filter, SlidersHorizontal, AlarmClock,
+  ArrowUpRight, AlertCircle, Info, CheckCircle2, RotateCcw, X, Filter, SlidersHorizontal, AlarmClock, RefreshCw,
   type LucideIcon
 } from 'lucide-react'
 import AppLayout from '@/layouts/app-layout'
@@ -17,6 +17,7 @@ import { SearchableSelect } from '@/components/searchable-select'
 import type { User } from '@/types'
 import { isIssueOverdue } from '@/lib/utils'
 import { IssueTypeBadge } from '@/components/issue-type-badge'
+import { PULL_THRESHOLD, usePullToRefresh } from '@/hooks/use-pull-to-refresh'
 
 interface Label {
   id: number
@@ -140,6 +141,8 @@ export default function Dashboard() {
   const [allReports, setAllReports] = useState<Report[]>([])
   const [filteredReports, setFilteredReports] = useState<Report[]>([])
   const [loading, setLoading] = useState(true)
+  // 'button' or 'pull' while a refresh is under way, so each can show its own spinner
+  const [refreshing, setRefreshing] = useState<'button' | 'pull' | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('board')
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
@@ -165,9 +168,10 @@ export default function Dashboard() {
     }))
   }
 
-  const fetchReports = async (currentFilters = filters) => {
+  // A quiet fetch keeps the current issues on screen until the new ones arrive
+  const fetchReports = async (currentFilters = filters, quiet = false) => {
     try {
-      setLoading(true)
+      if (!quiet) setLoading(true)
       // The list and board have no paging, so ask for enough rows to match the KPI counts
       const params = new URLSearchParams({ per_page: '200' })
 
@@ -261,13 +265,55 @@ export default function Dashboard() {
       <ChevronDown className="ml-1 h-3 w-3" />
   }
 
+  // Fetch the issues and the KPI counts again
+  const refresh = async (source: 'button' | 'pull' | null = null) => {
+    setRefreshing(source)
+    try {
+      await Promise.all([
+        fetchReports(filters, true),
+        new Promise<void>(resolve => router.reload({ only: ['stats', 'projects'], onFinish: () => resolve() })),
+      ])
+    } finally {
+      setRefreshing(null)
+    }
+  }
+
+  const refreshRef = useRef(refresh)
   useEffect(() => {
-    fetchReports()
-  }, [])
+    refreshRef.current = refresh
+  })
+
+  const pull = usePullToRefresh(() => {
+    if (!refreshing) refresh('pull')
+  })
 
   useEffect(() => {
     fetchReports(filters)
   }, [filters])
+
+  useEffect(() => {
+    // Back from an issue, the browser hands back the KPI counts as they were when the
+    // dashboard was last shown, so fetch them again
+    router.reload({ only: ['stats', 'projects'] })
+
+    // Coming back to the app (switching back to the tab, or reopening the installed app
+    // on a phone) shows what changed while it was away
+    const onVisible = () => {
+      if (!document.hidden) refreshRef.current()
+    }
+    // A page the browser kept in its back/forward cache runs no code when shown again
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) refreshRef.current()
+    }
+
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('pageshow', onPageShow)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [])
 
   useEffect(() => {
     if (allReports.length > 0) {
@@ -278,6 +324,22 @@ export default function Dashboard() {
   return (
     <AppLayout>
       <Head title="Issues" />
+
+      {/* Pull-to-refresh indicator */}
+      {(pull > 0 || refreshing === 'pull') && (
+        <div
+          className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center"
+          style={{ transform: `translateY(${refreshing === 'pull' ? PULL_THRESHOLD - 24 : pull - 24}px)` }}
+          aria-hidden="true"
+        >
+          <div className="rounded-full border bg-card p-2 shadow-md">
+            <RefreshCw
+              className={`h-5 w-5 ${refreshing === 'pull' || pull >= PULL_THRESHOLD ? 'text-primary' : 'text-muted-foreground'} ${refreshing === 'pull' ? 'animate-spin' : ''}`}
+              style={refreshing === 'pull' ? undefined : { transform: `rotate(${pull * 3}deg)` }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         {/* Header */}
@@ -291,6 +353,19 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10"
+              onClick={() => refresh('button')}
+              disabled={refreshing !== null}
+              aria-label="Refresh"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-4 h-4 sm:mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+
             {/* View Toggle */}
             <div className="flex items-center bg-muted rounded-lg p-1">
               <Button
@@ -588,10 +663,7 @@ export default function Dashboard() {
             reports={filteredReports}
             onlyStatus={filters.status !== 'all' ? filters.status as Report['status'] : null}
             canDrag
-            onMoved={() => {
-              fetchReports()
-              router.reload({ only: ['stats'] })
-            }}
+            onMoved={() => refresh()}
           />
         ) : (
           <div className="bg-card shadow-sm border rounded-xl overflow-hidden">
