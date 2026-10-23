@@ -14,7 +14,7 @@ use Tests\TestCase;
 
 /**
  * Images attached to issues are checked, scaled down and stored as WebP.
- * PDFs are stored exactly as uploaded.
+ * PDFs and videos are stored exactly as uploaded.
  */
 class AttachmentUploadTest extends TestCase
 {
@@ -71,6 +71,30 @@ class AttachmentUploadTest extends TestCase
     private function pdf(string $name = 'spec.pdf'): UploadedFile
     {
         return UploadedFile::fake()->createWithContent($name, "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
+    }
+
+    /**
+     * An upload whose type is judged from its content, as a real upload's is (fake uploads go by
+     * their name alone).
+     */
+    private function realUpload(string $name, string $content): UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'upload');
+        file_put_contents($path, $content);
+
+        return new UploadedFile($path, $name, null, null, true);
+    }
+
+    /** A file whose content really is a video of the given kind, padded to $kilobytes */
+    private function video(string $name, string $kind = 'mp4', int $kilobytes = 1): UploadedFile
+    {
+        $header = match ($kind) {
+            'mp4' => "\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom",
+            'mov' => "\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00qt  ",
+            'webm' => "\x1A\x45\xDF\xA3\x9F\x42\x86\x81\x01\x42\xF7\x81\x01\x42\xF2\x81\x04\x42\xF3\x81\x08\x42\x82\x84webm\x42\x87\x81\x04\x42\x85\x81\x02",
+        };
+
+        return $this->realUpload($name, str_pad($header, $kilobytes * 1024, "\0"));
     }
 
     // ------------------------------------------------------------------ Conversion and resizing
@@ -160,6 +184,66 @@ class AttachmentUploadTest extends TestCase
 
         $this->assertEqualsCanonicalizing(['image/webp', 'application/pdf'], ReportAttachment::pluck('mime_type')->all());
         $this->assertCount(2, Storage::disk('public')->allFiles());
+    }
+
+    // ------------------------------------------------------------------ Videos
+
+    public function test_mp4_webm_and_mov_videos_are_stored_exactly_as_uploaded()
+    {
+        $videos = [$this->video('Checkout bug.mp4'), $this->video('steps.webm', 'webm'), $this->video('Screen Recording.mov', 'mov')];
+        $originals = array_map(fn ($video) => file_get_contents($video->getRealPath()), $videos);
+
+        $this->createIssueWith($videos)->assertCreated();
+
+        $attachments = ReportAttachment::orderBy('id')->get();
+        $this->assertSame(['video/mp4', 'video/webm', 'video/quicktime'], $attachments->pluck('mime_type')->all());
+        $this->assertSame(['Checkout bug.mp4', 'steps.webm', 'Screen Recording.mov'], $attachments->pluck('original_filename')->all());
+
+        foreach ($attachments as $i => $attachment) {
+            $this->assertStringEndsWith('.' . ['mp4', 'webm', 'mov'][$i], $attachment->storage_path);
+            $this->assertSame($originals[$i], Storage::disk('public')->get($attachment->storage_path));
+        }
+    }
+
+    public function test_a_video_can_be_added_to_an_existing_issue()
+    {
+        $issue = $this->makeIssue($this->project, $this->staff);
+
+        $this->addTo($issue, [$this->video('after-fix.mp4')])
+            ->assertOk()
+            ->assertJsonPath('report.attachments.0.mime_type', 'video/mp4');
+    }
+
+    public function test_videos_may_be_up_to_25_mb_but_images_and_pdfs_stay_at_5_mb()
+    {
+        $this->createIssueWith([$this->video('long.mp4', 'mp4', 20 * 1024)])->assertCreated();
+
+        $this->createIssueWith([$this->video('too-long.mp4', 'mp4', 25 * 1024 + 1)])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('attachments.0');
+
+        $this->createIssueWith([UploadedFile::fake()->image('big.jpg', 100, 100)->size(6000)])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['attachments.0' => 'Images and PDFs must be 5 MB or smaller.']);
+
+        $this->assertSame(1, Report::count());
+    }
+
+    public function test_a_file_named_like_a_video_that_is_not_one_is_rejected()
+    {
+        $this->createIssueWith([$this->realUpload('clip.mp4', '<html><script>alert(1)</script></html>')])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('attachments.0');
+
+        $this->assertCount(0, Storage::disk('public')->allFiles());
+    }
+
+    public function test_a_video_is_stored_under_its_real_type_whatever_it_is_called()
+    {
+        // Saved as .html, a file like this would be served to the browser as a web page
+        $this->createIssueWith([$this->video('recording.html')])->assertCreated();
+
+        $this->assertStringEndsWith('.mp4', ReportAttachment::firstOrFail()->storage_path);
     }
 
     // ------------------------------------------------------------------ Existing behaviour

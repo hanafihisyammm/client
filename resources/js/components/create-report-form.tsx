@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Upload, X } from 'lucide-react'
+import { ATTACHMENT_ACCEPT, VIDEO_TYPES, maxAttachmentBytes } from '@/lib/attachments'
 
 interface CreateReportFormProps {
   onSuccess: () => void
@@ -67,17 +68,17 @@ export default function CreateReportForm({ onSuccess }: CreateReportFormProps) {
     }
     
     const allowedFiles = files.filter(file => 
-      file.type.startsWith('image/') || file.type === 'application/pdf'
+      file.type.startsWith('image/') || file.type === 'application/pdf' || VIDEO_TYPES.includes(file.type)
     )
     if (allowedFiles.length !== files.length) {
-      setErrors({ attachments: ['Only image files and PDFs are allowed'] })
+      setErrors({ attachments: ['Only images, PDFs and videos (MP4, WebM, MOV) are allowed'] })
       return
     }
 
     // Check file size limit (5MB)
-    const oversizedFiles = allowedFiles.filter(file => file.size > 5 * 1024 * 1024)
+    const oversizedFiles = allowedFiles.filter(file => file.size > maxAttachmentBytes(file))
     if (oversizedFiles.length > 0) {
-      setErrors({ attachments: ['Each file must be 5MB or smaller'] })
+      setErrors({ attachments: ['Images and PDFs must be 5MB or smaller, videos 25MB or smaller'] })
       return
     }
 
@@ -130,7 +131,7 @@ export default function CreateReportForm({ onSuccess }: CreateReportFormProps) {
               type="file"
               id="attachments"
               multiple
-              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+              accept={ATTACHMENT_ACCEPT}
               onChange={handleFileChange}
               className="hidden"
             />
@@ -140,10 +141,10 @@ export default function CreateReportForm({ onSuccess }: CreateReportFormProps) {
             >
               <Upload className="w-10 h-10 text-gray-400 mb-3" />
               <p className="text-sm text-gray-700 font-medium mb-1">
-                Click to upload screenshots or images
+                Click to upload screenshots, images or screen recordings
               </p>
               <p className="text-xs text-gray-500">
-                PNG, JPG, PDF up to 5MB each (max 5 files)
+                PNG, JPG, PDF up to 5MB · MP4, WebM, MOV up to 25MB (max 5 files)
               </p>
             </label>
           </div>

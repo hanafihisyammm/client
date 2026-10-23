@@ -23,11 +23,12 @@ use Illuminate\Validation\ValidationException;
 
 class ReportController extends Controller
 {
-    /**
-     * What may be attached to an issue: images and PDFs, up to 5 MB each. The type is judged
-     * from the file's content, not its name. Images are then checked again when they are decoded.
-     */
-    private const ATTACHMENT_RULES = 'file|mimes:jpeg,jpg,png,gif,webp,pdf|max:5120';
+    /** Size limits for issue attachments, in kilobytes: screen recordings get more room */
+    private const MAX_ATTACHMENT_KB = 5120;
+    private const MAX_VIDEO_KB = 25600;
+
+    /** Video types an issue may carry; they are stored exactly as uploaded */
+    private const VIDEO_MIMES = ['video/mp4', 'video/webm', 'video/quicktime'];
 
     /** What may be posted with a comment: images only, with the same size limit */
     private const COMMENT_IMAGE_RULES = 'file|mimes:jpeg,jpg,png,gif,webp|max:5120';
@@ -122,7 +123,7 @@ class ReportController extends Controller
             'label_ids' => 'nullable|array',
             'label_ids.*' => 'exists:labels,id',
             'attachments' => 'nullable|array|max:5',
-            'attachments.*' => self::ATTACHMENT_RULES,
+            'attachments.*' => $this->attachmentRules(),
         ], self::PAGE_URL_MESSAGES, self::PAGE_URL_ATTRIBUTES);
 
         $user = Auth::user();
@@ -585,7 +586,7 @@ class ReportController extends Controller
             case 'add_attachments':
                 $request->validate([
                     'attachments' => 'required|array|min:1|max:5',
-                    'attachments.*' => self::ATTACHMENT_RULES,
+                    'attachments.*' => $this->attachmentRules(),
                 ]);
 
                 $storedPaths = [];
@@ -628,8 +629,27 @@ class ReportController extends Controller
     }
 
     /**
+     * What may be attached to an issue: images and PDFs up to 5 MB, and MP4, WebM or MOV videos
+     * up to 25 MB. The type is judged from the file's content, not its name. Images are then
+     * checked again when they are decoded.
+     */
+    private function attachmentRules(): array
+    {
+        return [
+            'file',
+            'mimes:jpeg,jpg,png,gif,webp,pdf,mp4,webm,mov',
+            'max:' . self::MAX_VIDEO_KB,
+            function (string $attribute, mixed $file, \Closure $fail) {
+                if (!in_array($file->getMimeType(), self::VIDEO_MIMES, true) && $file->getSize() > self::MAX_ATTACHMENT_KB * 1024) {
+                    $fail('Images and PDFs must be 5 MB or smaller.');
+                }
+            },
+        ];
+    }
+
+    /**
      * Check every uploaded file and get it ready to store. Images are validated by their real
-     * content, scaled down if very large and converted to WebP; PDFs are left exactly as they are.
+     * content, scaled down if very large and converted to WebP; PDFs and videos are left exactly as they are.
      * Nothing is written yet.
      *
      * @param  array<int, UploadedFile>  $files
@@ -680,7 +700,8 @@ class ReportController extends Controller
                     $originalName = pathinfo($originalName, PATHINFO_FILENAME) . '.' . $image->extension;
                 }
             } else {
-                $filename = Str::random(40) . '.' . $file->getClientOriginalExtension();
+                // Named by what the content really is, so the file is never served as something else
+                $filename = Str::random(40) . '.' . ($file->guessExtension() ?? $file->getClientOriginalExtension());
                 $storagePath = $file->storeAs($directory, $filename, 'public');
                 $stored = $storagePath !== false;
             }

@@ -5,13 +5,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, FileImage, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, Pencil } from 'lucide-react'
+import { ArrowLeft, FileImage, FileVideo, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, Pencil } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
 import { PageUrlFields, checkPageUrls } from '@/components/page-url-fields'
 import AppLayout from '@/layouts/app-layout'
 import { getCsrfToken } from '@/lib/csrf'
 import { flashError, flashSuccess } from '@/lib/flash'
 import { goBack } from '@/lib/navigation'
+import { ATTACHMENT_ACCEPT, isVideoAttachment } from '@/lib/attachments'
 import { isIssueOverdue, labelStyle } from '@/lib/utils'
 
 interface ReportLabel {
@@ -77,6 +78,7 @@ interface Attachment {
   filename: string
   original_filename: string
   storage_path: string
+  mime_type?: string
   file_size?: number
 }
 
@@ -320,6 +322,8 @@ export default function ReportShow() {
 
   // Get image attachments for lightbox
   const imageAttachments = report.attachments.filter(a => /\.(jpg|jpeg|png|gif|webp)$/i.test(a.original_filename))
+  const videoAttachments = report.attachments.filter(isVideoAttachment)
+  const fileAttachments = report.attachments.filter(a => !imageAttachments.includes(a) && !videoAttachments.includes(a))
 
   const openLightbox = (images: Attachment[], index: number) => {
     setLightboxImages(images)
@@ -1021,7 +1025,7 @@ export default function ReportShow() {
                       type="file"
                       ref={fileInputRef}
                       onChange={(e) => handleUploadAttachments(e.target.files)}
-                      accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                      accept={ATTACHMENT_ACCEPT}
                       multiple
                       className="hidden"
                     />
@@ -1084,11 +1088,39 @@ export default function ReportShow() {
                       </div>
                     )}
 
-                    {/* Non-image attachments */}
-                    {report.attachments.filter(a => !/\.(jpg|jpeg|png|gif|webp)$/i.test(a.original_filename)).length > 0 && (
+                    {/* Video attachments - played in place */}
+                    {videoAttachments.length > 0 && (
+                      <div className="grid gap-3 sm:grid-cols-2 mb-4">
+                        {videoAttachments.map((attachment) => (
+                          <figure key={attachment.id} className="rounded-lg border overflow-hidden bg-black">
+                            <video
+                              src={`/storage/${attachment.storage_path}`}
+                              controls
+                              preload="metadata"
+                              playsInline
+                              className="w-full max-h-72"
+                            />
+                            <figcaption className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-t">
+                              <FileVideo className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                              <span className="text-xs text-gray-700 truncate flex-1">{attachment.original_filename}</span>
+                              <a
+                                href={`/storage/${attachment.storage_path}`}
+                                download={attachment.original_filename}
+                                className="text-gray-400 hover:text-gray-600"
+                                title="Download"
+                              >
+                                <Download className="w-4 h-4" />
+                              </a>
+                            </figcaption>
+                          </figure>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Other attachments */}
+                    {fileAttachments.length > 0 && (
                       <div className="space-y-2">
-                        {report.attachments
-                          .filter(a => !/\.(jpg|jpeg|png|gif|webp)$/i.test(a.original_filename))
+                        {fileAttachments
                           .map((attachment) => (
                             <a
                               key={attachment.id}
