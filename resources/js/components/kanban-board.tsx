@@ -180,7 +180,7 @@ function KanbanColumn({ status, reports, config, drag }: { status: IssueStatus; 
     return (
         <div
             {...drag.columnProps(status)}
-            className={`flex-1 min-w-[280px] max-w-[320px] overflow-hidden rounded-[14px] transition ${config.bgColor} border ${config.borderColor} ${columnDragClass(drag.columnState(status))}`}
+            className={`flex flex-1 flex-col min-w-[280px] max-w-[320px] overflow-hidden rounded-[14px] transition ${config.bgColor} border ${config.borderColor} ${columnDragClass(drag.columnState(status))}`}
         >
             {/* Column Header */}
             <div className={`px-4 py-3 ${config.headerBg} border-b ${config.borderColor}`}>
@@ -196,7 +196,7 @@ function KanbanColumn({ status, reports, config, drag }: { status: IssueStatus; 
             </div>
 
             {/* Cards */}
-            <div className="p-2 space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
+            <div className="p-2 space-y-2 max-h-[calc(100vh-280px)] min-h-0 flex-1 overflow-y-auto lg:max-h-none">
                 {reports.length === 0 ? (
                     <div className="text-center py-8 text-sm text-gray-400">
                         No issues
@@ -239,8 +239,8 @@ export default function KanbanBoard({ reports, canDrag = false, onMoved, onlySta
     const columns = onlyStatus ? allColumns.filter(column => column.status === onlyStatus) : allColumns;
 
     return (
-        <div className="space-y-3">
-            <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto pb-4">
                 {columns.map(({ status, reports }) => (
                     <KanbanColumn
                         key={status}

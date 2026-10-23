@@ -322,7 +322,7 @@ export default function Dashboard() {
   }, [sortField, sortOrder, allReports])
 
   return (
-    <AppLayout>
+    <AppLayout fillHeight={viewMode === 'board'}>
       <Head title="Issues" />
 
       {/* Pull-to-refresh indicator */}
@@ -341,7 +341,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="space-y-6">
+      <div className={`space-y-6 ${viewMode === 'board' ? 'lg:flex lg:min-h-0 lg:flex-1 lg:flex-col' : ''}`}>
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

@@ -13,6 +13,15 @@ const RESISTANCE = 0.5;
  *
  * Returns how far the page is pulled right now, to draw the indicator with.
  */
+/** Whether the touch is inside a panel scrolled down from its top, such as a board column, which should scroll back up instead */
+function inScrolledPanel(target: Element | null): boolean {
+    for (let el = target; el && el !== document.body; el = el.parentElement) {
+        if (el.scrollTop > 0) return true;
+    }
+
+    return false;
+}
+
 export function usePullToRefresh(onRefresh: () => unknown): number {
     const [pull, setPull] = useState(0);
     const onRefreshRef = useRef(onRefresh);
@@ -39,7 +48,7 @@ export function usePullToRefresh(onRefresh: () => unknown): number {
             // Leave open menus and dialogs, which scroll on their own, alone
             const inOverlay = target?.closest('[role="dialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]');
 
-            if (event.touches.length !== 1 || window.scrollY > 0 || inOverlay) {
+            if (event.touches.length !== 1 || window.scrollY > 0 || inOverlay || inScrolledPanel(target)) {
                 pulling = false;
                 return;
             }
