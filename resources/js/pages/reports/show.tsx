@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, FileImage, FileVideo, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, Pencil } from 'lucide-react'
+import { ArrowLeft, FileImage, FileVideo, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, Pencil, FileSpreadsheet } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
 import { PageUrlFields, checkPageUrls } from '@/components/page-url-fields'
 import AppLayout from '@/layouts/app-layout'
@@ -84,8 +84,15 @@ interface Attachment {
 
 // What a comment may carry: the same limits the server checks
 const COMMENT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-const MAX_COMMENT_IMAGES = 5
-const MAX_COMMENT_IMAGE_BYTES = 5 * 1024 * 1024
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+const COMMENT_FILE_ACCEPT = [...COMMENT_IMAGE_TYPES, XLSX_TYPE, '.xlsx'].join(',')
+const MAX_COMMENT_FILES = 5
+const MAX_COMMENT_FILE_BYTES = 5 * 1024 * 1024
+
+// Some systems report no type for a spreadsheet, so its name decides
+const isXlsxFile = (file: File) => file.type === XLSX_TYPE || /\.xlsx$/i.test(file.name)
+const isImageAttachment = (attachment: Attachment) =>
+  attachment.mime_type ? attachment.mime_type.startsWith('image/') : /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.original_filename)
 
 interface ActivityLog {
   id: number
@@ -299,7 +306,8 @@ export default function ReportShow() {
   const [loading, setLoading] = useState(false)
   const [newComment, setNewComment] = useState('')
   // Images waiting to be posted with the comment, each with a preview URL
-  const [commentImages, setCommentImages] = useState<Array<{ file: File; preview: string }>>([])
+  // Images get a preview URL; spreadsheets have none
+  const [commentImages, setCommentImages] = useState<Array<{ file: File; preview: string | null }>>([])
   // Opened from an edit link elsewhere (?edit=1): start in edit mode
   const [isEditing, setIsEditing] = useState(
     () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('edit') === '1'
@@ -432,31 +440,35 @@ export default function ReportShow() {
     }
   }
 
-  // Add picked, pasted or dropped images to the comment, refusing what the server would refuse
+  // Add picked, pasted or dropped files to the comment, refusing what the server would refuse
   const addCommentImages = (files: File[]) => {
     const accepted: File[] = []
     for (const file of files) {
-      if (!COMMENT_IMAGE_TYPES.includes(file.type)) {
-        flashError(`"${file.name}" is not a JPEG, PNG, GIF or WebP image.`)
-      } else if (file.size > MAX_COMMENT_IMAGE_BYTES) {
+      if (!COMMENT_IMAGE_TYPES.includes(file.type) && !isXlsxFile(file)) {
+        flashError(`"${file.name}" is not a JPEG, PNG, GIF or WebP image, or an Excel (.xlsx) file.`)
+      } else if (file.size > MAX_COMMENT_FILE_BYTES) {
         flashError(`"${file.name}" is larger than 5 MB.`)
       } else {
         accepted.push(file)
       }
     }
 
-    const room = MAX_COMMENT_IMAGES - commentImages.length
+    const room = MAX_COMMENT_FILES - commentImages.length
     if (accepted.length > room) {
-      flashError(`A comment can have up to ${MAX_COMMENT_IMAGES} images.`)
+      flashError(`A comment can have up to ${MAX_COMMENT_FILES} files.`)
     }
 
-    const added = accepted.slice(0, Math.max(room, 0)).map(file => ({ file, preview: URL.createObjectURL(file) }))
+    const added = accepted.slice(0, Math.max(room, 0)).map(file => ({
+      file,
+      preview: COMMENT_IMAGE_TYPES.includes(file.type) ? URL.createObjectURL(file) : null
+    }))
     if (added.length > 0) setCommentImages(prev => [...prev, ...added])
   }
 
   const removeCommentImage = (index: number) => {
     setCommentImages(prev => {
-      URL.revokeObjectURL(prev[index].preview)
+      const { preview } = prev[index]
+      if (preview) URL.revokeObjectURL(preview)
       return prev.filter((_, i) => i !== index)
     })
   }
@@ -513,10 +525,10 @@ export default function ReportShow() {
         setReport(result.report)
         if (result.abilities) setAbilities(result.abilities)
         setNewComment('')
-        commentImages.forEach(({ preview }) => URL.revokeObjectURL(preview))
+        commentImages.forEach(({ preview }) => preview && URL.revokeObjectURL(preview))
         setCommentImages([])
       } else {
-        // Validation errors name the image that could not be used
+        // Validation errors name the file that could not be used
         const firstError = result.errors ? Object.values(result.errors).flat()[0] : null
         flashError((firstError as string) || result.message || 'Failed to add comment')
       }
@@ -613,7 +625,7 @@ export default function ReportShow() {
         created_at: item.created_at,
         summary: 'Added a comment',
         details: item.attachments?.length
-          ? [`${item.attachments.length} ${item.attachments.length === 1 ? 'image' : 'images'}`]
+          ? [`${item.attachments.length} ${item.attachments.every(isImageAttachment) ? 'image' : 'file'}${item.attachments.length === 1 ? '' : 's'}`]
           : [],
         quote: item.comment || undefined
       })),
@@ -1166,13 +1178,13 @@ export default function ReportShow() {
                           {comment.comment && (
                             <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.comment}</p>
                           )}
-                          {comment.attachments && comment.attachments.length > 0 && (
+                          {comment.attachments && comment.attachments.some(isImageAttachment) && (
                             <div className="flex flex-wrap gap-2 mt-2">
-                              {comment.attachments.map((attachment, index) => (
+                              {comment.attachments.filter(isImageAttachment).map((attachment, index, images) => (
                                 <button
                                   key={attachment.id}
                                   type="button"
-                                  onClick={() => openLightbox(comment.attachments!, index)}
+                                  onClick={() => openLightbox(images, index)}
                                   className="rounded-md overflow-hidden border hover:border-blue-500 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
                                   title={attachment.original_filename}
                                 >
@@ -1183,6 +1195,22 @@ export default function ReportShow() {
                                     className="w-28 h-20 object-cover"
                                   />
                                 </button>
+                              ))}
+                            </div>
+                          )}
+                          {comment.attachments && comment.attachments.some(a => !isImageAttachment(a)) && (
+                            <div className="flex flex-col gap-1.5 mt-2">
+                              {comment.attachments.filter(a => !isImageAttachment(a)).map(attachment => (
+                                <a
+                                  key={attachment.id}
+                                  href={`/storage/${attachment.storage_path}`}
+                                  download={attachment.original_filename}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 bg-white rounded-md border hover:border-blue-500 transition-colors group max-w-sm"
+                                >
+                                  <FileSpreadsheet className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                  <span className="text-sm text-gray-700 truncate flex-1 group-hover:text-blue-600">{attachment.original_filename}</span>
+                                  <Download className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                </a>
                               ))}
                             </div>
                           )}
@@ -1209,8 +1237,15 @@ export default function ReportShow() {
                       {commentImages.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {commentImages.map(({ file, preview }, index) => (
-                            <div key={preview} className="relative">
-                              <img src={preview} alt={file.name} title={file.name} className="w-20 h-16 object-cover rounded-md border" />
+                            <div key={preview ?? `${file.name}-${index}`} className="relative">
+                              {preview ? (
+                                <img src={preview} alt={file.name} title={file.name} className="w-20 h-16 object-cover rounded-md border" />
+                              ) : (
+                                <div title={file.name} className="w-20 h-16 rounded-md border bg-gray-50 flex flex-col items-center justify-center gap-1 px-1">
+                                  <FileSpreadsheet className="w-5 h-5 text-green-600" />
+                                  <span className="text-[10px] text-gray-600 truncate w-full text-center">{file.name}</span>
+                                </div>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => removeCommentImage(index)}
@@ -1227,7 +1262,7 @@ export default function ReportShow() {
                         <input
                           ref={commentImageInputRef}
                           type="file"
-                          accept={COMMENT_IMAGE_TYPES.join(',')}
+                          accept={COMMENT_FILE_ACCEPT}
                           multiple
                           className="hidden"
                           onChange={(e) => {
@@ -1240,10 +1275,10 @@ export default function ReportShow() {
                           variant="ghost"
                           size="sm"
                           onClick={() => commentImageInputRef.current?.click()}
-                          disabled={loading || commentImages.length >= MAX_COMMENT_IMAGES}
+                          disabled={loading || commentImages.length >= MAX_COMMENT_FILES}
                         >
                           <ImagePlus className="w-4 h-4 mr-1" />
-                          Add image
+                          Add file
                         </Button>
                         <Button size="sm" onClick={handleAddComment} disabled={loading || (!newComment.trim() && commentImages.length === 0)}>
                           <Send className="w-4 h-4 mr-1" />

@@ -39,7 +39,7 @@ class ReportComment extends Model
     }
 
     /**
-     * The comment's text, or what was posted when it is only images. Used in notifications.
+     * The comment's text, or what was posted when it is only files. Used in notifications.
      */
     public function summary(): string
     {
@@ -47,8 +47,10 @@ class ReportComment extends Model
             return $this->comment;
         }
 
-        $count = $this->attachments()->count();
+        $attachments = $this->attachments()->get(['mime_type']);
+        $count = $attachments->count();
+        $noun = $attachments->every(fn ($attachment) => str_starts_with((string) $attachment->mime_type, 'image/')) ? 'image' : 'file';
 
-        return 'Added ' . $count . ' ' . ($count === 1 ? 'image' : 'images') . '.';
+        return 'Added ' . $count . ' ' . $noun . ($count === 1 ? '' : 's') . '.';
     }
 }

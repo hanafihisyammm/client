@@ -30,8 +30,8 @@ class ReportController extends Controller
     /** Video types an issue may carry; they are stored exactly as uploaded */
     private const VIDEO_MIMES = ['video/mp4', 'video/webm', 'video/quicktime'];
 
-    /** What may be posted with a comment: images only, with the same size limit */
-    private const COMMENT_IMAGE_RULES = 'file|mimes:jpeg,jpg,png,gif,webp|max:5120';
+    /** What may be posted with a comment: images and Excel spreadsheets, with the same size limit */
+    private const COMMENT_FILE_RULES = 'file|mimes:jpeg,jpg,png,gif,webp,xlsx|max:5120';
 
     /** How many pages one issue can name */
     private const MAX_PAGE_URLS = 10;
@@ -547,11 +547,11 @@ class ReportController extends Controller
                 break;
 
             case 'add_comment':
-                // Text, images, or both: a screenshot alone is a comment too
+                // Text, files, or both: a screenshot or spreadsheet alone is a comment too
                 $validated = $request->validate([
                     'comment' => 'nullable|required_without:images|string|max:2000',
                     'images' => 'nullable|array|max:5',
-                    'images.*' => self::COMMENT_IMAGE_RULES,
+                    'images.*' => self::COMMENT_FILE_RULES,
                 ]);
 
                 $images = $this->prepareAttachments($request->file('images') ?? [], 'images');
@@ -570,7 +570,7 @@ class ReportController extends Controller
                         return $comment;
                     });
                 } catch (\Throwable $exception) {
-                    // The comment was not saved, so its images must not be left behind either
+                    // The comment was not saved, so its files must not be left behind either
                     Storage::disk('public')->delete($storedPaths);
 
                     throw $exception;

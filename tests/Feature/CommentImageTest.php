@@ -14,7 +14,7 @@ use Tests\Concerns\BuildsCompanies;
 use Tests\TestCase;
 
 /**
- * Images posted with a comment are processed like issue attachments and belong to that comment.
+ * Images and Excel files posted with a comment are processed like issue attachments and belong to that comment.
  */
 class CommentImageTest extends TestCase
 {
@@ -94,7 +94,56 @@ class CommentImageTest extends TestCase
             ->assertJsonPath('report.comments.0.comment', 'On it');
     }
 
-    public function test_only_images_may_be_posted_with_a_comment()
+    /** The smallest workbook the server recognises as a real Excel file by its content */
+    private function xlsx(string $name): UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'xlsx');
+        $zip = new \ZipArchive();
+        $zip->open($path, \ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0"?><Types/>');
+        $zip->addFromString('_rels/.rels', '<Relationships/>');
+        $zip->addFromString('xl/workbook.xml', '<workbook/>');
+        $zip->close();
+
+        return new UploadedFile($path, $name, null, null, true);
+    }
+
+    public function test_a_comment_can_carry_an_excel_file()
+    {
+        $this->comment(['comment' => 'Figures attached', 'images' => [$this->xlsx('figures.xlsx')]])
+            ->assertOk()
+            ->assertJsonPath('report.comments.0.attachments.0.original_filename', 'figures.xlsx')
+            ->assertJsonPath('report.comments.0.attachments.0.mime_type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        // Stored as it was uploaded, under an .xlsx name
+        $attachment = ReportAttachment::sole();
+        $this->assertStringEndsWith('.xlsx', $attachment->storage_path);
+        Storage::disk('public')->assertExists($attachment->storage_path);
+    }
+
+    public function test_a_comment_of_only_files_says_so()
+    {
+        $this->comment(['images' => [$this->xlsx('a.xlsx'), UploadedFile::fake()->image('b.png', 10, 10)]])->assertOk();
+
+        $this->assertSame('Added 2 files.', ReportComment::sole()->summary());
+    }
+
+    public function test_a_zip_renamed_to_xlsx_is_refused()
+    {
+        $path = tempnam(sys_get_temp_dir(), 'zip');
+        $zip = new \ZipArchive();
+        $zip->open($path, \ZipArchive::OVERWRITE);
+        $zip->addFromString('readme.txt', 'not a workbook');
+        $zip->close();
+
+        $this->comment(['images' => [new UploadedFile($path, 'sheet.xlsx', null, null, true)]])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('images.0');
+
+        $this->assertCount(0, Storage::disk('public')->allFiles());
+    }
+
+    public function test_only_images_and_excel_files_may_be_posted_with_a_comment()
     {
         $pdf = UploadedFile::fake()->createWithContent('spec.pdf', "%PDF-1.4\n%%EOF\n");
 
