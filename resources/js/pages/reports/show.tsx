@@ -84,13 +84,13 @@ interface Attachment {
 
 // What a comment may carry: the same limits the server checks
 const COMMENT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-const COMMENT_FILE_ACCEPT = [...COMMENT_IMAGE_TYPES, XLSX_TYPE, '.xlsx'].join(',')
+const SPREADSHEET_TYPES = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv']
+const COMMENT_FILE_ACCEPT = [...COMMENT_IMAGE_TYPES, ...SPREADSHEET_TYPES, '.xlsx', '.xls', '.csv'].join(',')
 const MAX_COMMENT_FILES = 5
 const MAX_COMMENT_FILE_BYTES = 5 * 1024 * 1024
 
-// Some systems report no type for a spreadsheet, so its name decides
-const isXlsxFile = (file: File) => file.type === XLSX_TYPE || /\.xlsx$/i.test(file.name)
+// Systems disagree on a spreadsheet's type (a CSV may even be "Excel"), so its name decides
+const isSpreadsheetFile = (file: File) => /\.(xlsx|xls|csv)$/i.test(file.name)
 const isImageAttachment = (attachment: Attachment) =>
   attachment.mime_type ? attachment.mime_type.startsWith('image/') : /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.original_filename)
 
@@ -444,8 +444,8 @@ export default function ReportShow() {
   const addCommentImages = (files: File[]) => {
     const accepted: File[] = []
     for (const file of files) {
-      if (!COMMENT_IMAGE_TYPES.includes(file.type) && !isXlsxFile(file)) {
-        flashError(`"${file.name}" is not a JPEG, PNG, GIF or WebP image, or an Excel (.xlsx) file.`)
+      if (!COMMENT_IMAGE_TYPES.includes(file.type) && !isSpreadsheetFile(file)) {
+        flashError(`"${file.name}" is not a JPEG, PNG, GIF or WebP image, or an Excel or CSV file.`)
       } else if (file.size > MAX_COMMENT_FILE_BYTES) {
         flashError(`"${file.name}" is larger than 5 MB.`)
       } else {

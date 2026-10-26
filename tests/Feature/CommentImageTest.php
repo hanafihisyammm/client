@@ -14,7 +14,7 @@ use Tests\Concerns\BuildsCompanies;
 use Tests\TestCase;
 
 /**
- * Images and Excel files posted with a comment are processed like issue attachments and belong to that comment.
+ * Images, Excel and CSV files posted with a comment are processed like issue attachments and belong to that comment.
  */
 class CommentImageTest extends TestCase
 {
@@ -94,6 +94,15 @@ class CommentImageTest extends TestCase
             ->assertJsonPath('report.comments.0.comment', 'On it');
     }
 
+    /** An upload whose type is judged from its content, as a real one is; fakes judge by name */
+    private function upload(string $name, string $content): UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'upload');
+        file_put_contents($path, $content);
+
+        return new UploadedFile($path, $name, null, null, true);
+    }
+
     /** The smallest workbook the server recognises as a real Excel file by its content */
     private function xlsx(string $name): UploadedFile
     {
@@ -121,6 +130,66 @@ class CommentImageTest extends TestCase
         Storage::disk('public')->assertExists($attachment->storage_path);
     }
 
+    /** The smallest old-style workbook the server recognises as an Excel file: an empty "Workbook" stream */
+    private function xls(string $name): UploadedFile
+    {
+        $entry = function (string $name, int $type, int $child): string {
+            $utf16 = mb_convert_encoding($name, 'UTF-16LE', 'UTF-8') . "\0\0";
+
+            return str_pad($utf16, 64, "\0") . pack('vCC', strlen($utf16), $type, 1)
+                . pack('VVV', 0xFFFFFFFF, 0xFFFFFFFF, $child) . str_repeat("\0", 36)
+                . pack('VVV', 0xFFFFFFFE, 0, 0);
+        };
+
+        $header = "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1" . str_repeat("\0", 16)
+            . pack('vvvvv', 0x3E, 3, 0xFFFE, 9, 6) . str_repeat("\0", 6)
+            . pack('VVVVVVVVVV', 0, 1, 1, 0, 4096, 0xFFFFFFFE, 0, 0xFFFFFFFE, 0, 0) . str_repeat("\xFF", 432);
+        $fat = pack('VV', 0xFFFFFFFD, 0xFFFFFFFE) . str_repeat("\xFF", 504);
+        $directory = $entry('Root Entry', 5, 1) . $entry('Workbook', 2, 0xFFFFFFFF) . str_repeat("\0", 256);
+
+        return $this->upload($name, $header . $fat . $directory);
+    }
+
+    public function test_a_comment_can_carry_an_old_excel_file()
+    {
+        $this->comment(['images' => [$this->xls('report.xls')]])
+            ->assertOk()
+            ->assertJsonPath('report.comments.0.attachments.0.original_filename', 'report.xls')
+            ->assertJsonPath('report.comments.0.attachments.0.mime_type', 'application/vnd.ms-excel');
+
+        $this->assertStringEndsWith('.xls', ReportAttachment::sole()->storage_path);
+    }
+
+    public function test_a_comment_can_carry_csv_files_whether_or_not_they_read_as_csv()
+    {
+        // The first is recognised as CSV; the second, with semicolons and quotes, reads as plain text
+        $this->comment(['images' => [
+            $this->upload('orders.csv', "name,qty\nApple,3\nPear,5\n"),
+            $this->upload('export.csv', "name;qty\n\"Cafe, ok\";3\n"),
+        ]])->assertOk();
+
+        $attachments = ReportAttachment::orderBy('id')->get();
+        $this->assertSame(['orders.csv', 'export.csv'], $attachments->pluck('original_filename')->all());
+        $this->assertSame(['text/csv', 'text/csv'], $attachments->pluck('mime_type')->all());
+        $this->assertTrue($attachments->every(fn (ReportAttachment $a) => str_ends_with($a->storage_path, '.csv')));
+    }
+
+    public function test_plain_text_that_is_not_named_csv_is_refused()
+    {
+        $this->comment(['images' => [$this->upload('notes.txt', "just some notes\n")]])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('images.0');
+
+        $this->assertCount(0, Storage::disk('public')->allFiles());
+    }
+
+    public function test_a_web_page_named_csv_is_refused()
+    {
+        $page = $this->upload('data.csv', "<!DOCTYPE html><html><body><script>alert(1)</script></body></html>");
+
+        $this->comment(['images' => [$page]])->assertStatus(422)->assertJsonValidationErrors('images.0');
+    }
+
     public function test_a_comment_of_only_files_says_so()
     {
         $this->comment(['images' => [$this->xlsx('a.xlsx'), UploadedFile::fake()->image('b.png', 10, 10)]])->assertOk();
@@ -143,7 +212,7 @@ class CommentImageTest extends TestCase
         $this->assertCount(0, Storage::disk('public')->allFiles());
     }
 
-    public function test_only_images_and_excel_files_may_be_posted_with_a_comment()
+    public function test_only_images_excel_and_csv_files_may_be_posted_with_a_comment()
     {
         $pdf = UploadedFile::fake()->createWithContent('spec.pdf', "%PDF-1.4\n%%EOF\n");
 

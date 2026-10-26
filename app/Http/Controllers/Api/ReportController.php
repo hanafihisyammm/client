@@ -30,8 +30,6 @@ class ReportController extends Controller
     /** Video types an issue may carry; they are stored exactly as uploaded */
     private const VIDEO_MIMES = ['video/mp4', 'video/webm', 'video/quicktime'];
 
-    /** What may be posted with a comment: images and Excel spreadsheets, with the same size limit */
-    private const COMMENT_FILE_RULES = 'file|mimes:jpeg,jpg,png,gif,webp,xlsx|max:5120';
 
     /** How many pages one issue can name */
     private const MAX_PAGE_URLS = 10;
@@ -551,7 +549,7 @@ class ReportController extends Controller
                 $validated = $request->validate([
                     'comment' => 'nullable|required_without:images|string|max:2000',
                     'images' => 'nullable|array|max:5',
-                    'images.*' => self::COMMENT_FILE_RULES,
+                    'images.*' => $this->commentFileRules(),
                 ]);
 
                 $images = $this->prepareAttachments($request->file('images') ?? [], 'images');
@@ -648,6 +646,24 @@ class ReportController extends Controller
     }
 
     /**
+     * What may be posted with a comment: images, and Excel (.xlsx, .xls) or CSV spreadsheets, up to 5 MB.
+     * A CSV often reads as plain text, so plain text is only taken under a .csv name.
+     */
+    private function commentFileRules(): array
+    {
+        return [
+            'file',
+            'mimes:jpeg,jpg,png,gif,webp,xlsx,xls,csv,txt',
+            'max:' . self::MAX_ATTACHMENT_KB,
+            function (string $attribute, mixed $file, \Closure $fail) {
+                if ($file->guessExtension() === 'txt' && strtolower($file->getClientOriginalExtension()) !== 'csv') {
+                    $fail('Only images, Excel files and CSV files can be posted with a comment.');
+                }
+            },
+        ];
+    }
+
+    /**
      * Check every uploaded file and get it ready to store. Images are validated by their real
      * content, scaled down if very large and converted to WebP; PDFs and videos are left exactly as they are.
      * Nothing is written yet.
@@ -700,8 +716,13 @@ class ReportController extends Controller
                     $originalName = pathinfo($originalName, PATHINFO_FILENAME) . '.' . $image->extension;
                 }
             } else {
-                // Named by what the content really is, so the file is never served as something else
-                $filename = Str::random(40) . '.' . ($file->guessExtension() ?? $file->getClientOriginalExtension());
+                // Named by what the content really is, so the file is never served as something else.
+                // Plain text only gets this far as a CSV, so it is kept as one.
+                $extension = $file->guessExtension() ?? $file->getClientOriginalExtension();
+                if ($extension === 'txt') {
+                    $extension = 'csv';
+                }
+                $filename = Str::random(40) . '.' . $extension;
                 $storagePath = $file->storeAs($directory, $filename, 'public');
                 $stored = $storagePath !== false;
             }
@@ -719,7 +740,7 @@ class ReportController extends Controller
                 'report_comment_id' => $comment?->id,
                 'filename' => $filename,
                 'original_filename' => $originalName,
-                'mime_type' => $image ? $image->mimeType : $file->getMimeType(),
+                'mime_type' => $image ? $image->mimeType : (str_ends_with($filename, '.csv') ? 'text/csv' : $file->getMimeType()),
                 'file_size' => $image ? $image->size() : $file->getSize(),
                 'storage_path' => $storagePath,
             ]);
