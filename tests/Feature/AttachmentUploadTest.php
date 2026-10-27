@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsCompanies;
+use Tests\Concerns\MakesUploads;
 use Tests\TestCase;
 
 /**
@@ -19,6 +20,7 @@ use Tests\TestCase;
 class AttachmentUploadTest extends TestCase
 {
     use BuildsCompanies;
+    use MakesUploads;
     use RefreshDatabase;
 
     /** A two-frame, 1x1 animated GIF */
@@ -71,18 +73,6 @@ class AttachmentUploadTest extends TestCase
     private function pdf(string $name = 'spec.pdf'): UploadedFile
     {
         return UploadedFile::fake()->createWithContent($name, "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
-    }
-
-    /**
-     * An upload whose type is judged from its content, as a real upload's is (fake uploads go by
-     * their name alone).
-     */
-    private function realUpload(string $name, string $content): UploadedFile
-    {
-        $path = tempnam(sys_get_temp_dir(), 'upload');
-        file_put_contents($path, $content);
-
-        return new UploadedFile($path, $name, null, null, true);
     }
 
     /** A file whose content really is a video of the given kind, padded to $kilobytes */
@@ -224,7 +214,7 @@ class AttachmentUploadTest extends TestCase
 
         $this->createIssueWith([UploadedFile::fake()->image('big.jpg', 100, 100)->size(6000)])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['attachments.0' => 'Images and PDFs must be 5 MB or smaller.']);
+            ->assertJsonValidationErrors(['attachments.0' => 'Images, PDFs and spreadsheets must be 5 MB or smaller.']);
 
         $this->assertSame(1, Report::count());
     }
@@ -339,6 +329,50 @@ class AttachmentUploadTest extends TestCase
 
         $this->assertStringContainsString('"huge-scan.jpg" is too large to process (2000 x 1000 pixels)', $message);
         $this->assertSame(0, Report::count());
+    }
+
+    public function test_excel_and_csv_files_are_stored_exactly_as_uploaded()
+    {
+        $this->createIssueWith([
+            $this->xlsx('figures.xlsx'),
+            $this->xls('old.xls'),
+            $this->realUpload('orders.csv', "name,qty\nApple,3\n"),
+            // Reads as plain text, but is named as a CSV
+            $this->realUpload('export.csv', "name;qty\n\"Cafe, ok\";3\n"),
+        ])->assertCreated();
+
+        $attachments = ReportAttachment::orderBy('id')->get();
+        $this->assertSame(['figures.xlsx', 'old.xls', 'orders.csv', 'export.csv'], $attachments->pluck('original_filename')->all());
+        $this->assertSame([
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel',
+            'text/csv',
+            'text/csv',
+        ], $attachments->pluck('mime_type')->all());
+        $this->assertSame(['xlsx', 'xls', 'csv', 'csv'], $attachments->map(fn ($a) => pathinfo($a->storage_path, PATHINFO_EXTENSION))->all());
+    }
+
+    public function test_a_spreadsheet_can_be_added_to_an_existing_issue()
+    {
+        $issue = $this->makeIssue($this->project, $this->staff);
+
+        $this->addTo($issue, [$this->xlsx('figures.xlsx')])->assertOk();
+
+        $this->assertSame(1, $issue->attachments()->count());
+    }
+
+    public function test_spreadsheets_stay_at_5_mb_and_disguised_files_are_rejected()
+    {
+        $tooBig = $this->realUpload('big.csv', str_repeat("a,b\n", 1400 * 1024));
+        $text = $this->realUpload('notes.txt', "just some notes\n");
+        $page = $this->realUpload('data.csv', '<!DOCTYPE html><html><body><script>alert(1)</script></body></html>');
+
+        foreach ([$tooBig, $text, $page] as $file) {
+            $this->createIssueWith([$file])->assertStatus(422)->assertJsonValidationErrors('attachments.0');
+        }
+
+        $this->assertSame(0, Report::count());
+        $this->assertCount(0, Storage::disk('public')->allFiles());
     }
 
     public function test_disallowed_types_and_oversized_files_are_rejected()

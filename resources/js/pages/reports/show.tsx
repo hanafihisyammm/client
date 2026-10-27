@@ -12,7 +12,7 @@ import AppLayout from '@/layouts/app-layout'
 import { getCsrfToken } from '@/lib/csrf'
 import { flashError, flashSuccess } from '@/lib/flash'
 import { goBack } from '@/lib/navigation'
-import { ATTACHMENT_ACCEPT, isVideoAttachment } from '@/lib/attachments'
+import { ATTACHMENT_ACCEPT, SPREADSHEET_TYPES, isSpreadsheetAttachment, isSpreadsheetFile, isVideoAttachment } from '@/lib/attachments'
 import { isIssueOverdue, labelStyle } from '@/lib/utils'
 
 interface ReportLabel {
@@ -84,13 +84,10 @@ interface Attachment {
 
 // What a comment may carry: the same limits the server checks
 const COMMENT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-const SPREADSHEET_TYPES = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv']
 const COMMENT_FILE_ACCEPT = [...COMMENT_IMAGE_TYPES, ...SPREADSHEET_TYPES, '.xlsx', '.xls', '.csv'].join(',')
 const MAX_COMMENT_FILES = 5
 const MAX_COMMENT_FILE_BYTES = 5 * 1024 * 1024
 
-// Systems disagree on a spreadsheet's type (a CSV may even be "Excel"), so its name decides
-const isSpreadsheetFile = (file: File) => /\.(xlsx|xls|csv)$/i.test(file.name)
 const isImageAttachment = (attachment: Attachment) =>
   attachment.mime_type ? attachment.mime_type.startsWith('image/') : /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.original_filename)
 
@@ -1141,7 +1138,9 @@ export default function ReportShow() {
                               rel="noopener noreferrer"
                               className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border hover:bg-gray-100 hover:border-gray-300 transition-all group"
                             >
-                              <File className="w-5 h-5 text-red-500" />
+                              {isSpreadsheetAttachment(attachment)
+                                ? <FileSpreadsheet className="w-5 h-5 text-green-600" />
+                                : <File className="w-5 h-5 text-red-500" />}
                               <span className="text-sm text-gray-700 truncate flex-1 group-hover:text-blue-600">
                                 {attachment.original_filename}
                               </span>

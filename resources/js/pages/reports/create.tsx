@@ -8,14 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DatePicker } from '@/components/ui/date-picker'
 import {
   Upload, X, ArrowLeft, Bug, Sparkles, AlertTriangle, ArrowUpRight,
-  AlertCircle, Info, FileImage, FileVideo, File, Calendar, Link2
+  AlertCircle, Info, FileImage, FileVideo, FileSpreadsheet, File, Calendar, Link2
 } from 'lucide-react'
 import { SearchableSelect } from '@/components/searchable-select'
 import { PageUrlFields, checkPageUrls } from '@/components/page-url-fields'
 import AppLayout from '@/layouts/app-layout'
 import { flashError, flashSuccess } from '@/lib/flash'
 import { goBack } from '@/lib/navigation'
-import { ATTACHMENT_ACCEPT, VIDEO_TYPES, maxAttachmentBytes } from '@/lib/attachments'
+import { ATTACHMENT_ACCEPT, VIDEO_TYPES, isAllowedAttachment, isSpreadsheetFile, maxAttachmentBytes } from '@/lib/attachments'
 
 interface Project {
   id: number
@@ -185,17 +185,15 @@ export default function CreateReport() {
       return
     }
 
-    const allowedFiles = files.filter(file =>
-      file.type.startsWith('image/') || file.type === 'application/pdf' || VIDEO_TYPES.includes(file.type)
-    )
+    const allowedFiles = files.filter(isAllowedAttachment)
     if (allowedFiles.length !== files.length) {
-      setErrors({ attachments: ['Only images, PDFs and videos (MP4, WebM, MOV) are allowed'] })
+      setErrors({ attachments: ['Only images, PDFs, videos (MP4, WebM, MOV) and Excel or CSV files are allowed'] })
       return
     }
 
     const oversizedFiles = allowedFiles.filter(file => file.size > maxAttachmentBytes(file))
     if (oversizedFiles.length > 0) {
-      setErrors({ attachments: ['Images and PDFs must be 5MB or smaller, videos 25MB or smaller'] })
+      setErrors({ attachments: ['Images, PDFs and spreadsheets must be 5MB or smaller, videos 25MB or smaller'] })
       return
     }
 
@@ -248,6 +246,9 @@ export default function CreateReport() {
     }
     if (VIDEO_TYPES.includes(file.type)) {
       return <FileVideo className="w-5 h-5 text-purple-500" />
+    }
+    if (isSpreadsheetFile(file)) {
+      return <FileSpreadsheet className="w-5 h-5 text-green-600" />
     }
     return <FileImage className="w-5 h-5 text-blue-500" />
   }
@@ -447,7 +448,7 @@ export default function CreateReport() {
                       Drop files or a screen recording here, click to upload, or paste a screenshot
                     </p>
                     <p className="text-xs text-gray-500">
-                      PNG, JPG, GIF, PDF up to 5MB · MP4, WebM, MOV up to 25MB (max 5 files)
+                      PNG, JPG, GIF, PDF, XLSX, XLS, CSV up to 5MB · MP4, WebM, MOV up to 25MB (max 5 files)
                     </p>
                   </label>
                 </div>

@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsCompanies;
+use Tests\Concerns\MakesUploads;
 use Tests\TestCase;
 
 /**
@@ -19,6 +20,7 @@ use Tests\TestCase;
 class CommentImageTest extends TestCase
 {
     use BuildsCompanies;
+    use MakesUploads;
     use RefreshDatabase;
 
     private User $manager;
@@ -94,29 +96,6 @@ class CommentImageTest extends TestCase
             ->assertJsonPath('report.comments.0.comment', 'On it');
     }
 
-    /** An upload whose type is judged from its content, as a real one is; fakes judge by name */
-    private function upload(string $name, string $content): UploadedFile
-    {
-        $path = tempnam(sys_get_temp_dir(), 'upload');
-        file_put_contents($path, $content);
-
-        return new UploadedFile($path, $name, null, null, true);
-    }
-
-    /** The smallest workbook the server recognises as a real Excel file by its content */
-    private function xlsx(string $name): UploadedFile
-    {
-        $path = tempnam(sys_get_temp_dir(), 'xlsx');
-        $zip = new \ZipArchive();
-        $zip->open($path, \ZipArchive::OVERWRITE);
-        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0"?><Types/>');
-        $zip->addFromString('_rels/.rels', '<Relationships/>');
-        $zip->addFromString('xl/workbook.xml', '<workbook/>');
-        $zip->close();
-
-        return new UploadedFile($path, $name, null, null, true);
-    }
-
     public function test_a_comment_can_carry_an_excel_file()
     {
         $this->comment(['comment' => 'Figures attached', 'images' => [$this->xlsx('figures.xlsx')]])
@@ -128,26 +107,6 @@ class CommentImageTest extends TestCase
         $attachment = ReportAttachment::sole();
         $this->assertStringEndsWith('.xlsx', $attachment->storage_path);
         Storage::disk('public')->assertExists($attachment->storage_path);
-    }
-
-    /** The smallest old-style workbook the server recognises as an Excel file: an empty "Workbook" stream */
-    private function xls(string $name): UploadedFile
-    {
-        $entry = function (string $name, int $type, int $child): string {
-            $utf16 = mb_convert_encoding($name, 'UTF-16LE', 'UTF-8') . "\0\0";
-
-            return str_pad($utf16, 64, "\0") . pack('vCC', strlen($utf16), $type, 1)
-                . pack('VVV', 0xFFFFFFFF, 0xFFFFFFFF, $child) . str_repeat("\0", 36)
-                . pack('VVV', 0xFFFFFFFE, 0, 0);
-        };
-
-        $header = "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1" . str_repeat("\0", 16)
-            . pack('vvvvv', 0x3E, 3, 0xFFFE, 9, 6) . str_repeat("\0", 6)
-            . pack('VVVVVVVVVV', 0, 1, 1, 0, 4096, 0xFFFFFFFE, 0, 0xFFFFFFFE, 0, 0) . str_repeat("\xFF", 432);
-        $fat = pack('VV', 0xFFFFFFFD, 0xFFFFFFFE) . str_repeat("\xFF", 504);
-        $directory = $entry('Root Entry', 5, 1) . $entry('Workbook', 2, 0xFFFFFFFF) . str_repeat("\0", 256);
-
-        return $this->upload($name, $header . $fat . $directory);
     }
 
     public function test_a_comment_can_carry_an_old_excel_file()
@@ -164,8 +123,8 @@ class CommentImageTest extends TestCase
     {
         // The first is recognised as CSV; the second, with semicolons and quotes, reads as plain text
         $this->comment(['images' => [
-            $this->upload('orders.csv', "name,qty\nApple,3\nPear,5\n"),
-            $this->upload('export.csv', "name;qty\n\"Cafe, ok\";3\n"),
+            $this->realUpload('orders.csv', "name,qty\nApple,3\nPear,5\n"),
+            $this->realUpload('export.csv', "name;qty\n\"Cafe, ok\";3\n"),
         ]])->assertOk();
 
         $attachments = ReportAttachment::orderBy('id')->get();
@@ -176,7 +135,7 @@ class CommentImageTest extends TestCase
 
     public function test_plain_text_that_is_not_named_csv_is_refused()
     {
-        $this->comment(['images' => [$this->upload('notes.txt', "just some notes\n")]])
+        $this->comment(['images' => [$this->realUpload('notes.txt', "just some notes\n")]])
             ->assertStatus(422)
             ->assertJsonValidationErrors('images.0');
 
@@ -185,7 +144,7 @@ class CommentImageTest extends TestCase
 
     public function test_a_web_page_named_csv_is_refused()
     {
-        $page = $this->upload('data.csv', "<!DOCTYPE html><html><body><script>alert(1)</script></body></html>");
+        $page = $this->realUpload('data.csv', "<!DOCTYPE html><html><body><script>alert(1)</script></body></html>");
 
         $this->comment(['images' => [$page]])->assertStatus(422)->assertJsonValidationErrors('images.0');
     }

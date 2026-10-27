@@ -31,6 +31,9 @@ class ReportController extends Controller
     private const VIDEO_MIMES = ['video/mp4', 'video/webm', 'video/quicktime'];
 
 
+    /** Excel and CSV files; a CSV may read as plain text ("txt"), see plainTextOnlyAsCsv() */
+    private const SPREADSHEET_EXTENSIONS = 'xlsx,xls,csv,txt';
+
     /** How many pages one issue can name */
     private const MAX_PAGE_URLS = 10;
 
@@ -627,45 +630,53 @@ class ReportController extends Controller
     }
 
     /**
-     * What may be attached to an issue: images and PDFs up to 5 MB, and MP4, WebM or MOV videos
-     * up to 25 MB. The type is judged from the file's content, not its name. Images are then
-     * checked again when they are decoded.
+     * What may be attached to an issue: images, PDFs and Excel or CSV spreadsheets up to 5 MB, and
+     * MP4, WebM or MOV videos up to 25 MB. The type is judged from the file's content, not its name.
+     * Images are then checked again when they are decoded.
      */
     private function attachmentRules(): array
     {
         return [
             'file',
-            'mimes:jpeg,jpg,png,gif,webp,pdf,mp4,webm,mov',
+            'mimes:jpeg,jpg,png,gif,webp,pdf,mp4,webm,mov,' . self::SPREADSHEET_EXTENSIONS,
             'max:' . self::MAX_VIDEO_KB,
             function (string $attribute, mixed $file, \Closure $fail) {
                 if (!in_array($file->getMimeType(), self::VIDEO_MIMES, true) && $file->getSize() > self::MAX_ATTACHMENT_KB * 1024) {
-                    $fail('Images and PDFs must be 5 MB or smaller.');
+                    $fail('Images, PDFs and spreadsheets must be 5 MB or smaller.');
                 }
             },
+            $this->plainTextOnlyAsCsv(),
         ];
     }
 
     /**
      * What may be posted with a comment: images, and Excel (.xlsx, .xls) or CSV spreadsheets, up to 5 MB.
-     * A CSV often reads as plain text, so plain text is only taken under a .csv name.
      */
     private function commentFileRules(): array
     {
         return [
             'file',
-            'mimes:jpeg,jpg,png,gif,webp,xlsx,xls,csv,txt',
+            'mimes:jpeg,jpg,png,gif,webp,' . self::SPREADSHEET_EXTENSIONS,
             'max:' . self::MAX_ATTACHMENT_KB,
-            function (string $attribute, mixed $file, \Closure $fail) {
-                if ($file->guessExtension() === 'txt' && strtolower($file->getClientOriginalExtension()) !== 'csv') {
-                    $fail('Only images, Excel files and CSV files can be posted with a comment.');
-                }
-            },
+            $this->plainTextOnlyAsCsv(),
         ];
     }
 
     /**
+     * A CSV often reads as plain text, so plain text is only taken under a .csv name.
+     */
+    private function plainTextOnlyAsCsv(): \Closure
+    {
+        return function (string $attribute, mixed $file, \Closure $fail) {
+            if ($file->guessExtension() === 'txt' && strtolower($file->getClientOriginalExtension()) !== 'csv') {
+                $fail('Plain text files can only be attached as CSV (.csv) files.');
+            }
+        };
+    }
+
+    /**
      * Check every uploaded file and get it ready to store. Images are validated by their real
-     * content, scaled down if very large and converted to WebP; PDFs and videos are left exactly as they are.
+     * content, scaled down if very large and converted to WebP; PDFs, videos and spreadsheets are left exactly as they are.
      * Nothing is written yet.
      *
      * @param  array<int, UploadedFile>  $files
