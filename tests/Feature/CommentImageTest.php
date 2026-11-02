@@ -11,14 +11,16 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsCompanies;
+use Tests\Concerns\MakesUploads;
 use Tests\TestCase;
 
 /**
- * Images posted with a comment are processed like issue attachments and belong to that comment.
+ * Images, Excel and CSV files posted with a comment are processed like issue attachments and belong to that comment.
  */
 class CommentImageTest extends TestCase
 {
     use BuildsCompanies;
+    use MakesUploads;
     use RefreshDatabase;
 
     private User $manager;
@@ -94,7 +96,82 @@ class CommentImageTest extends TestCase
             ->assertJsonPath('report.comments.0.comment', 'On it');
     }
 
-    public function test_only_images_may_be_posted_with_a_comment()
+    public function test_a_comment_can_carry_an_excel_file()
+    {
+        $this->comment(['comment' => 'Figures attached', 'images' => [$this->xlsx('figures.xlsx')]])
+            ->assertOk()
+            ->assertJsonPath('report.comments.0.attachments.0.original_filename', 'figures.xlsx')
+            ->assertJsonPath('report.comments.0.attachments.0.mime_type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        // Stored as it was uploaded, under an .xlsx name
+        $attachment = ReportAttachment::sole();
+        $this->assertStringEndsWith('.xlsx', $attachment->storage_path);
+        Storage::disk('public')->assertExists($attachment->storage_path);
+    }
+
+    public function test_a_comment_can_carry_an_old_excel_file()
+    {
+        $this->comment(['images' => [$this->xls('report.xls')]])
+            ->assertOk()
+            ->assertJsonPath('report.comments.0.attachments.0.original_filename', 'report.xls')
+            ->assertJsonPath('report.comments.0.attachments.0.mime_type', 'application/vnd.ms-excel');
+
+        $this->assertStringEndsWith('.xls', ReportAttachment::sole()->storage_path);
+    }
+
+    public function test_a_comment_can_carry_csv_files_whether_or_not_they_read_as_csv()
+    {
+        // The first is recognised as CSV; the second, with semicolons and quotes, reads as plain text
+        $this->comment(['images' => [
+            $this->realUpload('orders.csv', "name,qty\nApple,3\nPear,5\n"),
+            $this->realUpload('export.csv', "name;qty\n\"Cafe, ok\";3\n"),
+        ]])->assertOk();
+
+        $attachments = ReportAttachment::orderBy('id')->get();
+        $this->assertSame(['orders.csv', 'export.csv'], $attachments->pluck('original_filename')->all());
+        $this->assertSame(['text/csv', 'text/csv'], $attachments->pluck('mime_type')->all());
+        $this->assertTrue($attachments->every(fn (ReportAttachment $a) => str_ends_with($a->storage_path, '.csv')));
+    }
+
+    public function test_plain_text_that_is_not_named_csv_is_refused()
+    {
+        $this->comment(['images' => [$this->realUpload('notes.txt', "just some notes\n")]])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('images.0');
+
+        $this->assertCount(0, Storage::disk('public')->allFiles());
+    }
+
+    public function test_a_web_page_named_csv_is_refused()
+    {
+        $page = $this->realUpload('data.csv', "<!DOCTYPE html><html><body><script>alert(1)</script></body></html>");
+
+        $this->comment(['images' => [$page]])->assertStatus(422)->assertJsonValidationErrors('images.0');
+    }
+
+    public function test_a_comment_of_only_files_says_so()
+    {
+        $this->comment(['images' => [$this->xlsx('a.xlsx'), UploadedFile::fake()->image('b.png', 10, 10)]])->assertOk();
+
+        $this->assertSame('Added 2 files.', ReportComment::sole()->summary());
+    }
+
+    public function test_a_zip_renamed_to_xlsx_is_refused()
+    {
+        $path = tempnam(sys_get_temp_dir(), 'zip');
+        $zip = new \ZipArchive();
+        $zip->open($path, \ZipArchive::OVERWRITE);
+        $zip->addFromString('readme.txt', 'not a workbook');
+        $zip->close();
+
+        $this->comment(['images' => [new UploadedFile($path, 'sheet.xlsx', null, null, true)]])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('images.0');
+
+        $this->assertCount(0, Storage::disk('public')->allFiles());
+    }
+
+    public function test_only_images_excel_and_csv_files_may_be_posted_with_a_comment()
     {
         $pdf = UploadedFile::fake()->createWithContent('spec.pdf', "%PDF-1.4\n%%EOF\n");
 

@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Upload, X } from 'lucide-react'
-import { ATTACHMENT_ACCEPT, VIDEO_TYPES, maxAttachmentBytes } from '@/lib/attachments'
+import { ATTACHMENT_ACCEPT, isAllowedAttachment, maxAttachmentBytes } from '@/lib/attachments'
 
 interface CreateReportFormProps {
   onSuccess: () => void
@@ -67,18 +67,16 @@ export default function CreateReportForm({ onSuccess }: CreateReportFormProps) {
       return
     }
     
-    const allowedFiles = files.filter(file => 
-      file.type.startsWith('image/') || file.type === 'application/pdf' || VIDEO_TYPES.includes(file.type)
-    )
+    const allowedFiles = files.filter(isAllowedAttachment)
     if (allowedFiles.length !== files.length) {
-      setErrors({ attachments: ['Only images, PDFs and videos (MP4, WebM, MOV) are allowed'] })
+      setErrors({ attachments: ['Only images, PDFs, videos (MP4, WebM, MOV) and Excel or CSV files are allowed'] })
       return
     }
 
     // Check file size limit (5MB)
     const oversizedFiles = allowedFiles.filter(file => file.size > maxAttachmentBytes(file))
     if (oversizedFiles.length > 0) {
-      setErrors({ attachments: ['Images and PDFs must be 5MB or smaller, videos 25MB or smaller'] })
+      setErrors({ attachments: ['Images, PDFs and spreadsheets must be 5MB or smaller, videos 25MB or smaller'] })
       return
     }
 
@@ -144,7 +142,7 @@ export default function CreateReportForm({ onSuccess }: CreateReportFormProps) {
                 Click to upload screenshots, images or screen recordings
               </p>
               <p className="text-xs text-gray-500">
-                PNG, JPG, PDF up to 5MB · MP4, WebM, MOV up to 25MB (max 5 files)
+                PNG, JPG, PDF, XLSX, XLS, CSV up to 5MB · MP4, WebM, MOV up to 25MB (max 5 files)
               </p>
             </label>
           </div>
