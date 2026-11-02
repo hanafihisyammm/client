@@ -5,12 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\Report;
 use App\Models\User;
-use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -57,6 +55,7 @@ class CompanyController extends Controller
             'name' => 'required|string|max:255|unique:companies,name',
             'manager_id' => 'nullable|integer|exists:users,id',
             'manager_email' => 'nullable|string|email|max:255',
+            'password' => ['nullable', 'string', Password::defaults()],
         ], [
             'name.unique' => 'A client company with this name already exists.',
         ]);
@@ -68,7 +67,7 @@ class CompanyController extends Controller
                 'created_by' => Auth::id(),
             ]);
 
-            $this->assignManager($company, $validated['manager_id'] ?? null, $validated['manager_email'] ?? null);
+            $this->assignManager($company, $validated['manager_id'] ?? null, $validated['manager_email'] ?? null, $validated['password'] ?? null);
 
             return $company;
         });
@@ -97,7 +96,7 @@ class CompanyController extends Controller
         $staff = $company->staff()
             ->with('projects:id,uuid,name,status')
             ->orderBy('name')
-            ->get(['id', 'uuid', 'name', 'email', 'role', 'company_id', 'deactivated_at', 'email_verified_at', 'created_at']);
+            ->get(['id', 'uuid', 'name', 'email', 'role', 'company_id', 'deactivated_at', 'email_verified_at', 'must_change_password', 'created_at']);
 
         $projects = $company->projects()
             ->withCount([
@@ -146,6 +145,7 @@ class CompanyController extends Controller
             'status' => 'required|in:active,inactive',
             'manager_id' => 'nullable|integer|exists:users,id',
             'manager_email' => 'nullable|string|email|max:255',
+            'password' => ['nullable', 'string', Password::defaults()],
             // What becomes of the manager being replaced: taken out of the company, or kept in it as staff
             'previous_manager' => 'nullable|in:remove,staff',
         ], [
@@ -165,6 +165,7 @@ class CompanyController extends Controller
                     $company,
                     $validated['manager_id'] ?? null,
                     $validated['manager_email'] ?? null,
+                    $validated['password'] ?? null,
                     $validated['previous_manager'] ?? 'remove'
                 );
                 $managerChanged = true;
@@ -217,29 +218,31 @@ class CompanyController extends Controller
      * Put one manager in charge of the company. That can be:
      *   - an existing manager who has no company,
      *   - one of this company's own active staff, who is promoted to manager, or
-     *   - a new manager account invited by email.
+     *   - a new manager account, with a password they must change when they first log in.
      *
      * The previous manager, if any, either leaves the company (no company, and so no access,
      * until an admin places them elsewhere) or stays in it as an ordinary staff member.
      */
-    private function assignManager(Company $company, ?int $managerId, ?string $managerEmail, string $previousManager = 'remove'): void
+    private function assignManager(Company $company, ?int $managerId, ?string $managerEmail, ?string $password = null, string $previousManager = 'remove'): void
     {
         $manager = null;
-        $isNew = false;
 
         if ($managerEmail) {
             $manager = User::where('email', $managerEmail)->first();
 
             if (!$manager) {
-                $manager = User::create([
-                    'name' => Str::title(trim(preg_replace('/[._+\-]+/', ' ', Str::before($managerEmail, '@')))),
+                if (!$password) {
+                    throw ValidationException::withMessages([
+                        'password' => 'Please set a password for the new manager.',
+                    ]);
+                }
+
+                $manager = User::createWithTemporaryPassword([
+                    'name' => User::nameFromEmail($managerEmail),
                     'email' => $managerEmail,
-                    'password' => Hash::make(Str::random(40)),
                     'role' => 'manager',
                     'created_by' => Auth::id(),
-                    'email_verified_at' => null,
-                ]);
-                $isNew = true;
+                ], $password);
             }
         } elseif ($managerId) {
             $manager = User::find($managerId);
@@ -247,7 +250,7 @@ class CompanyController extends Controller
 
         if (!$manager) {
             throw ValidationException::withMessages([
-                'manager_email' => 'Choose an existing manager or enter an email address to invite a new one.',
+                'manager_email' => 'Choose an existing manager or enter an email address to create a new one.',
             ]);
         }
 
@@ -283,9 +286,5 @@ class CompanyController extends Controller
 
         $manager->update(['company_id' => $company->id]);
         $company->update(['manager_id' => $manager->id]);
-
-        if ($isNew) {
-            app(NotificationService::class)->notifyUserInvited($manager, Auth::user());
-        }
     }
 }

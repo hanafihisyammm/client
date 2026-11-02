@@ -92,8 +92,8 @@ class FlashMessageTest extends TestCase
 
     public function test_user_and_company_actions_set_a_success_message()
     {
-        $this->actingAs($this->admin)->post('/users', ['email' => 'new.person@example.com', 'role' => 'staff', 'company_id' => $this->company->id])
-            ->assertSessionHas('flash.message', 'Invitation sent to new.person@example.com.');
+        $this->actingAs($this->admin)->post('/users', ['email' => 'new.person@example.com', 'role' => 'staff', 'company_id' => $this->company->id, 'password' => 'Temp-Passw0rd-1'])
+            ->assertSessionHas('flash.message', 'Account created for new.person@example.com.');
 
         $user = User::where('email', 'new.person@example.com')->firstOrFail();
 
@@ -104,7 +104,7 @@ class FlashMessageTest extends TestCase
         $this->actingAs($this->admin)->delete('/users/' . $user->uuid)
             ->assertSessionHas('flash.message', 'User deleted successfully.');
 
-        $this->actingAs($this->admin)->post('/clients', ['name' => 'Borneo Foods', 'manager_email' => 'farah@example.com'])
+        $this->actingAs($this->admin)->post('/clients', ['name' => 'Borneo Foods', 'manager_email' => 'farah@example.com', 'password' => 'Temp-Passw0rd-1'])
             ->assertSessionHas('flash.message', "Client company 'Borneo Foods' created successfully.");
         $this->actingAs($this->admin)->patch('/clients/' . $this->company->uuid, ['name' => 'Acme Trading', 'status' => 'active'])
             ->assertSessionHas('flash.message', 'Client company updated successfully.');

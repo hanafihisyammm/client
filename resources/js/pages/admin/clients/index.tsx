@@ -1,6 +1,7 @@
 import { PageHeader } from '@/components/page-header';
 import { StatCard } from '@/components/stat-card';
 import InputError from '@/components/input-error';
+import { TemporaryPasswordInput } from '@/components/temporary-password-input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -57,6 +58,7 @@ export default function ClientsIndex({ companies, availableManagers }: Props) {
     const { data, setData, post, processing, errors, reset, clearErrors, transform } = useForm({
         name: '',
         manager_email: '',
+        password: '',
     });
 
     const filtered = companies.filter((company) => {
@@ -73,10 +75,10 @@ export default function ClientsIndex({ companies, availableManagers }: Props) {
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
 
-        // Either an existing manager without a company, or a new one invited by email
+        // Either an existing manager without a company, or a new account with a password set here
         transform((form) =>
             managerChoice === NEW_MANAGER
-                ? { name: form.name, manager_email: form.manager_email }
+                ? { name: form.name, manager_email: form.manager_email, password: form.password }
                 : { name: form.name, manager_id: Number(managerChoice) },
         );
         post('/clients', { preserveScroll: true, onSuccess: closeCreate });
@@ -254,7 +256,7 @@ export default function ClientsIndex({ companies, availableManagers }: Props) {
                                             {manager.name} ({manager.email})
                                         </SelectItem>
                                     ))}
-                                    <SelectItem value={NEW_MANAGER}>Invite a new manager by email</SelectItem>
+                                    <SelectItem value={NEW_MANAGER}>Create a new manager account</SelectItem>
                                 </SelectContent>
                             </Select>
                             <InputError message={(errors as Record<string, string>).manager_id} />
@@ -272,8 +274,22 @@ export default function ClientsIndex({ companies, availableManagers }: Props) {
                                     required
                                 />
                                 <InputError message={errors.manager_email} />
+                            </div>
+                        )}
+
+                        {managerChoice === NEW_MANAGER && (
+                            <div className="space-y-2">
+                                <Label htmlFor="manager-password">Temporary password</Label>
+                                <TemporaryPasswordInput
+                                    id="manager-password"
+                                    label="temporary password"
+                                    value={data.password}
+                                    onChange={(password) => setData('password', password)}
+                                />
+                                <InputError message={errors.password} />
                                 <p className="text-sm text-muted-foreground">
-                                    They'll get an email to set their own name and password.
+                                    Copy this and pass it on, as it won't be shown again. If the email is already a manager's account, it is ignored. They must
+                                    choose their own password when they first log in.
                                 </p>
                             </div>
                         )}

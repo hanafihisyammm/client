@@ -8,6 +8,7 @@ use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LabelController;
 use App\Http\Controllers\ReportLinkController;
 use App\Http\Controllers\TimeEntryController;
+use App\Http\Middleware\EnsurePasswordIsChanged;
 use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -20,7 +21,7 @@ Route::get('/status', [HealthController::class, 'status']);
 // The session is tried first, so nothing changes for the browser. The active check is
 // repeated here because a token is only resolved by this middleware,
 // after the api group's own check has already run.
-Route::middleware(['auth:web,sanctum', EnsureUserIsActive::class])->group(function () {
+Route::middleware(['auth:web,sanctum', EnsureUserIsActive::class, EnsurePasswordIsChanged::class])->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });

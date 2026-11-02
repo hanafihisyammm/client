@@ -23,6 +23,7 @@ interface User {
     role: string;
     created_at: string;
     email_verified_at: string | null;
+    must_change_password: boolean;
     deactivated_at: string | null;
     company?: { id: number; uuid: string; name: string } | null;
 }
@@ -140,10 +141,11 @@ export default function Index({ users }: Props) {
         });
     };
 
-    // Users ticked for "Resend invitations". Only people still waiting to set up can be ticked.
+    // Users ticked for "Resend invitations". Only people waiting on an invitation can be ticked:
+    // someone given a password is also Pending until they change it, but has nothing to resend.
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [resending, setResending] = useState(false);
-    const isPending = (user: User) => !user.email_verified_at && !user.deactivated_at;
+    const isPending = (user: User) => !user.email_verified_at && !user.must_change_password && !user.deactivated_at;
 
     const resendSelected = () => {
         setResending(true);
@@ -387,7 +389,7 @@ export default function Index({ users }: Props) {
                     </div>
                 ) : pendingTotal > 0 && (
                     <p className="text-sm text-muted-foreground">
-                        {pendingTotal} {pendingTotal === 1 ? 'user has' : 'users have'} not set up their account yet. Tick them to resend their invitations in one go.
+                        {pendingTotal} {pendingTotal === 1 ? 'user is' : 'users are'} still waiting on an invitation. Tick them to resend their invitations in one go.
                     </p>
                 )}
 
@@ -504,7 +506,7 @@ export default function Index({ users }: Props) {
                                                             Sign in as
                                                         </DropdownMenuItem>
                                                     )}
-                                                    {!user.email_verified_at && (
+                                                    {isPending(user) && (
                                                         <DropdownMenuItem
                                                             onClick={() => resendInvitation(user)}
                                                             className="cursor-pointer"

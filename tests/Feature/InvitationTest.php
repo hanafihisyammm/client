@@ -15,19 +15,18 @@ class InvitationTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** Someone invited by email earlier, who has not used their invitation yet. New accounts now get a password instead. */
     private function invite(string $email = 'new.person@example.com', string $role = 'staff'): User
     {
-        $admin = User::where('role', 'super_admin')->first() ?? User::factory()->create(['role' => 'super_admin']);
         $company = \App\Models\Company::firstOrCreate(['name' => 'Acme'], ['status' => 'active']);
 
-        $this->actingAs($admin)->post('/users', [
+        return User::factory()->create([
+            'name' => 'New Person',
             'email' => $email,
             'role' => $role,
             'company_id' => $role === 'staff' ? $company->id : null,
-        ])->assertRedirect('/users');
-        auth()->logout();
-
-        return User::where('email', $email)->firstOrFail();
+            'email_verified_at' => null,
+        ]);
     }
 
     private function linkFor(User $user, $expires = null): string
@@ -35,25 +34,10 @@ class InvitationTest extends TestCase
         return URL::temporarySignedRoute('invitation.show', $expires ?? now()->addDays(7), ['user' => $user->uuid], false);
     }
 
-    public function test_adding_a_user_needs_only_an_email_and_role_and_sends_an_invitation()
-    {
-        Notification::fake();
-
-        foreach (['admin', 'manager', 'staff'] as $role) {
-            $user = $this->invite("{$role}.person@example.com", $role);
-
-            $this->assertSame($role, $user->role);
-            $this->assertSame(ucfirst($role) . ' Person', $user->name);
-            $this->assertNull($user->email_verified_at);
-            // Only staff are placed in a company here; a manager is put in charge of one from the Clients page
-            $this->assertSame($role === 'staff', $user->company_id !== null);
-            Notification::assertSentTo($user, UserInvited::class);
-        }
-    }
-
     public function test_the_invitation_email_links_to_the_setup_page()
     {
         $user = $this->invite();
+        app(\App\Services\NotificationService::class)->notifyUserInvited($user, User::factory()->create(['role' => 'admin']));
 
         $message = app('mailer')->getSymfonyTransport()->messages()->first()->getOriginalMessage();
         $this->assertSame('new.person@example.com', $message->getTo()[0]->getAddress());
@@ -114,7 +98,7 @@ class InvitationTest extends TestCase
     public function test_an_invitation_can_be_resent_only_while_the_account_is_pending()
     {
         $user = $this->invite();
-        $admin = User::where('role', 'super_admin')->first();
+        $admin = User::factory()->create(['role' => 'super_admin']);
 
         Notification::fake();
 
@@ -144,10 +128,10 @@ class InvitationTest extends TestCase
         $superAdmin = User::factory()->create(['role' => 'super_admin']);
         $admin = User::factory()->create(['role' => 'admin']);
 
-        $this->actingAs($superAdmin)->post('/users', ['email' => 'no.company@example.com', 'role' => 'staff'])
+        $this->actingAs($superAdmin)->post('/users', ['email' => 'no.company@example.com', 'role' => 'staff', 'password' => 'Temp-Passw0rd-1'])
             ->assertSessionHasErrors('company_id');
 
-        $this->actingAs($admin)->post('/users', ['email' => 'another.admin@example.com', 'role' => 'admin'])
+        $this->actingAs($admin)->post('/users', ['email' => 'another.admin@example.com', 'role' => 'admin', 'password' => 'Temp-Passw0rd-1'])
             ->assertSessionHasErrors('role');
 
         $this->assertDatabaseMissing('users', ['email' => 'no.company@example.com']);
@@ -183,54 +167,9 @@ class InvitationTest extends TestCase
                 'email' => $person[0],
                 'role' => $person[1] ?? 'staff',
                 'company_id' => ($person[1] ?? 'staff') === 'staff' ? ($person[2] ?? $defaultCompany) : null,
+                'password' => 'Temp-Passw0rd-1',
             ], $people),
         ]);
-    }
-
-    public function test_several_people_can_be_invited_at_once_each_with_their_own_role()
-    {
-        Notification::fake();
-        $admin = User::factory()->create(['role' => 'admin']);
-        $acme = \App\Models\Company::create(['name' => 'Acme', 'status' => 'active']);
-        $borneo = \App\Models\Company::create(['name' => 'Borneo', 'status' => 'active']);
-
-        $this->bulkInvite($admin, [
-            ['jane.tan@example.com', 'staff', $acme->id],
-            ['ALI@example.com', 'staff', $borneo->id],
-            ['mei@example.com', 'manager'],
-        ])->assertRedirect('/users')->assertSessionHas('flash.message', '3 invitations sent.');
-
-        $jane = User::where('email', 'jane.tan@example.com')->firstOrFail();
-        $ali = User::where('email', 'ali@example.com')->firstOrFail();
-        $mei = User::where('email', 'mei@example.com')->firstOrFail();
-
-        $this->assertSame(['staff', $acme->id, 'Jane Tan'], [$jane->role, $jane->company_id, $jane->name]);
-        $this->assertSame(['staff', $borneo->id], [$ali->role, $ali->company_id]);
-        // A manager is put in charge of a company from the Clients page, not here
-        $this->assertSame(['manager', null], [$mei->role, $mei->company_id]);
-
-        foreach ([$jane, $ali, $mei] as $user) {
-            $this->assertNull($user->email_verified_at);
-            $this->assertSame($admin->id, $user->created_by);
-            Notification::assertSentToTimes($user, UserInvited::class, 1);
-        }
-    }
-
-    public function test_already_registered_addresses_are_skipped_and_reported()
-    {
-        Notification::fake();
-        $admin = User::factory()->create(['role' => 'admin']);
-        $existing = User::factory()->create(['email' => 'here.already@example.com']);
-
-        $this->bulkInvite($admin, [['new.one@example.com'], ['Here.Already@example.com']])
-            ->assertSessionHas('flash.message', 'Invitation sent to new.one@example.com. Skipped 1 already registered: here.already@example.com.');
-
-        $this->assertSame(1, User::where('email', 'here.already@example.com')->count());
-        Notification::assertNotSentTo($existing, UserInvited::class);
-
-        // Nothing new to invite is an error, not a silent success
-        $this->bulkInvite($admin, [['new.one@example.com'], ['here.already@example.com']])
-            ->assertSessionHasErrors(['invites' => 'All of these email addresses are already registered.']);
     }
 
     public function test_one_bad_row_stops_the_whole_bulk_invite_and_points_at_that_row()
@@ -244,8 +183,8 @@ class InvitationTest extends TestCase
             ->assertSessionHasErrors(['invites.1.email' => 'This address is listed more than once.']);
         // Staff without a company, and an unknown role
         $this->actingAs($admin)->post('/users/bulk', ['invites' => [
-            ['email' => 'good@example.com', 'role' => 'manager'],
-            ['email' => 'other@example.com', 'role' => 'staff'],
+            ['email' => 'good@example.com', 'role' => 'manager', 'password' => 'Temp-Passw0rd-1'],
+            ['email' => 'other@example.com', 'role' => 'staff', 'password' => 'Temp-Passw0rd-1'],
         ]])->assertSessionHasErrors('invites.1.company_id');
         $this->bulkInvite($admin, [['good@example.com', 'owner']])->assertSessionHasErrors('invites.0.role');
 
@@ -279,7 +218,7 @@ class InvitationTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'boss1@example.com']);
 
         $this->bulkInvite($superAdmin, [['boss1@example.com', 'admin'], ['boss2@example.com', 'admin']])
-            ->assertSessionHas('flash.message', '2 invitations sent.');
+            ->assertSessionHas('flash.message', '2 accounts created.');
         $this->assertSame(2, User::where('role', 'admin')->whereNull('email_verified_at')->count());
     }
 

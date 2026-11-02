@@ -90,6 +90,7 @@ class AuditLogTest extends TestCase
             'email' => 'new.staff@example.com',
             'role' => 'staff',
             'company_id' => $this->company->id,
+            'password' => 'Temp-Passw0rd-1',
         ])->assertRedirect();
 
         $newUser = User::where('email', 'new.staff@example.com')->firstOrFail();
@@ -128,7 +129,7 @@ class AuditLogTest extends TestCase
         );
 
         AuditLog::query()->delete();
-        $this->actingAs($this->admin)->post('/clients', ['name' => 'Borneo Foods', 'manager_email' => 'farah@example.com'])->assertRedirect();
+        $this->actingAs($this->admin)->post('/clients', ['name' => 'Borneo Foods', 'manager_email' => 'farah@example.com', 'password' => 'Temp-Passw0rd-1'])->assertRedirect();
 
         $this->assertSame(
             'Created company "Borneo Foods"',

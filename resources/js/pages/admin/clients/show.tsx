@@ -1,5 +1,6 @@
 import InputError from '@/components/input-error';
 import { StatCard } from '@/components/stat-card';
+import { TemporaryPasswordInput } from '@/components/temporary-password-input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -41,6 +42,7 @@ interface StaffMember {
     email: string;
     deactivated_at: string | null;
     email_verified_at: string | null;
+    must_change_password?: boolean;
     projects: ProjectSummary[];
     /** The company's manager, listed with the team. They are on every project and are not managed here. */
     isManager?: boolean;
@@ -130,7 +132,7 @@ function StaffStatus({ member }: { member: StaffMember }) {
     const [label, classes] = {
         deactivated: ['Deactivated', 'border-red-200 bg-red-50 text-red-700'],
         active: ['Active', 'border-green-200 bg-green-50 text-green-700'],
-        invited: ['Invited', 'border-gray-200 bg-gray-50 text-gray-600'],
+        invited: ['Pending', 'border-gray-200 bg-gray-50 text-gray-600'],
     }[staffStateOf(member)];
 
     return <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${classes}`}>{label}</span>;
@@ -290,9 +292,9 @@ export default function ClientShow({ company, staff, projects, counts, canManage
         });
     };
 
-    const addForm = useForm({ name: '', email: '', project_ids: [] as number[] });
+    const addForm = useForm({ name: '', email: '', password: '', project_ids: [] as number[] });
     const editForm = useForm({ name: '', email: '', project_ids: [] as number[] });
-    const settingsForm = useForm({ name: company.name, status: company.status as string, manager_email: '' });
+    const settingsForm = useForm({ name: company.name, status: company.status as string, manager_email: '', password: '' });
 
     const closeAdd = () => {
         setShowAddStaff(false);
@@ -323,7 +325,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
             name: form.name,
             status: form.status,
             ...(managerChoice === NEW_MANAGER
-                ? { manager_email: form.manager_email, previous_manager: previousManager }
+                ? { manager_email: form.manager_email, password: form.password, previous_manager: previousManager }
                 : managerChoice !== KEEP_MANAGER
                   ? { manager_id: Number(managerChoice), previous_manager: previousManager }
                   : {}),
@@ -452,7 +454,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                     <SelectContent>
                                         <SelectItem value="all">All Status</SelectItem>
                                         <SelectItem value="active">Active</SelectItem>
-                                        <SelectItem value="invited">Invited</SelectItem>
+                                        <SelectItem value="invited">Pending</SelectItem>
                                         <SelectItem value="deactivated">Deactivated</SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -519,7 +521,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                                                     {canManageStaff ? <Pencil className="mr-2 h-4 w-4" /> : <FolderKanban className="mr-2 h-4 w-4" />}
                                                                     {canManageStaff ? 'Edit and assign projects' : 'Assign projects'}
                                                                 </DropdownMenuItem>
-                                                                {canManageStaff && !member.email_verified_at && !member.deactivated_at && (
+                                                                {canManageStaff && !member.email_verified_at && !member.must_change_password && !member.deactivated_at && (
                                                                     <DropdownMenuItem onClick={() => staffAction(member, 'invitation')} className="cursor-pointer">
                                                                         <Send className="mr-2 h-4 w-4" />
                                                                         Resend invitation
@@ -712,7 +714,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                     <DialogHeader>
                         <DialogTitle>Add Staff</DialogTitle>
                         <DialogDescription>
-                            Creates a staff login for {company.name}. They'll get an email to set their own password.
+                            Creates a staff login for {company.name}. They must choose their own password when they first log in.
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={submitAdd} className="space-y-4">
@@ -732,6 +734,17 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                             <Label htmlFor="staff-name">Name (optional)</Label>
                             <Input id="staff-name" value={addForm.data.name} onChange={(event) => addForm.setData('name', event.target.value)} />
                             <InputError message={addForm.errors.name} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="staff-password">Temporary password</Label>
+                            <TemporaryPasswordInput
+                                id="staff-password"
+                                label="temporary password"
+                                value={addForm.data.password}
+                                onChange={(password) => addForm.setData('password', password)}
+                            />
+                            <InputError message={addForm.errors.password} />
+                            <p className="text-sm text-muted-foreground">Copy this and pass it on, as it won't be shown again.</p>
                         </div>
                         <div className="space-y-2">
                             <Label>Projects</Label>
@@ -847,7 +860,7 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                             Change to {manager.name} ({manager.email})
                                         </SelectItem>
                                     ))}
-                                    <SelectItem value={NEW_MANAGER}>Invite a new manager by email</SelectItem>
+                                    <SelectItem value={NEW_MANAGER}>Create a new manager account</SelectItem>
                                 </SelectContent>
                             </Select>
                             <InputError message={(settingsForm.errors as Record<string, string>).manager_id} />
@@ -882,6 +895,21 @@ export default function ClientShow({ company, staff, projects, counts, canManage
                                     required
                                 />
                                 <InputError message={settingsForm.errors.manager_email} />
+                            </div>
+                        )}
+                        {managerChoice === NEW_MANAGER && (
+                            <div className="space-y-2">
+                                <Label htmlFor="settings-manager-password">Temporary password</Label>
+                                <TemporaryPasswordInput
+                                    id="settings-manager-password"
+                                    label="temporary password"
+                                    value={settingsForm.data.password}
+                                    onChange={(password) => settingsForm.setData('password', password)}
+                                />
+                                <InputError message={settingsForm.errors.password} />
+                                <p className="text-sm text-muted-foreground">
+                                    Copy this and pass it on, as it won't be shown again. If the email is already a manager's account, it is ignored.
+                                </p>
                             </div>
                         )}
                         <div className="flex justify-end gap-3 pt-2">

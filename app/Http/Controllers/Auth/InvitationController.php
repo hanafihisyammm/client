@@ -49,6 +49,7 @@ class InvitationController extends Controller
             'name' => $validated['name'],
             'password' => Hash::make($validated['password']),
             'email_verified_at' => now(),
+            'must_change_password' => false,
         ])->save();
 
         Auth::login($user);

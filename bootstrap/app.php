@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsurePasswordIsChanged;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ForceHttps;
 use App\Http\Middleware\HandleAppearance;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // and the header (one entry per script) pushed responses past nginx's 4 KB header
             // limit when "Remember me" also set its cookies, which showed as a 502 Bad Gateway
             EnsureUserIsActive::class,
+            EnsurePasswordIsChanged::class,
         ]);
 
         // Laravel moves authentication ahead of the group's other middleware, so "Remember me"

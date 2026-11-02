@@ -72,7 +72,30 @@ class User extends Authenticatable
             'password' => 'hashed',
             'role' => 'string',
             'deactivated_at' => 'datetime',
+            'must_change_password' => 'boolean',
         ];
+    }
+
+    /**
+     * Create an account with a password an admin chose. It stays "Pending" (no verified date)
+     * until the person logs in with it and replaces it with their own.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public static function createWithTemporaryPassword(array $attributes, string $password): self
+    {
+        $user = new self($attributes);
+        $user->forceFill(['password' => $password, 'must_change_password' => true])->save();
+
+        return $user;
+    }
+
+    /**
+     * A first guess at a name from the email ("jane.tan@..." becomes "Jane Tan"), until they enter their own.
+     */
+    public static function nameFromEmail(string $email): string
+    {
+        return Str::title(trim(preg_replace('/[._+\-]+/', ' ', Str::before($email, '@'))));
     }
 
     public function reportedReports(): HasMany

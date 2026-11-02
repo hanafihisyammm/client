@@ -15,12 +15,12 @@ class CompanyManagementTest extends TestCase
 {
     use BuildsCompanies, RefreshDatabase;
 
-    public function test_an_admin_creates_a_company_by_inviting_a_new_manager()
+    public function test_an_admin_creates_a_company_with_a_new_manager()
     {
         Notification::fake();
         $admin = $this->makeAdmin();
 
-        $this->actingAs($admin)->post('/clients', ['name' => 'Acme Trading', 'manager_email' => 'aisha.rahman@example.com'])
+        $this->actingAs($admin)->post('/clients', ['name' => 'Acme Trading', 'manager_email' => 'aisha.rahman@example.com', 'password' => 'Temp-Passw0rd-1'])
             ->assertRedirect();
 
         $company = Company::where('name', 'Acme Trading')->firstOrFail();
@@ -31,7 +31,8 @@ class CompanyManagementTest extends TestCase
         $this->assertSame($company->id, $manager->company_id);
         $this->assertSame('Aisha Rahman', $manager->name);
         $this->assertNull($manager->email_verified_at);
-        Notification::assertSentTo($manager, UserInvited::class);
+        $this->assertTrue($manager->must_change_password);
+        Notification::assertNotSentTo($manager, UserInvited::class);
     }
 
     public function test_an_admin_can_put_an_existing_unassigned_manager_in_charge()

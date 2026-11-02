@@ -58,11 +58,13 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
-        // An invited user who sets their password through "Forgot password" has also finished setting up
+        // Someone who sets their password through "Forgot password" has also finished setting up,
+        // and the password is now their own rather than one an admin gave them
         Event::listen(function (PasswordReset $event) {
-            if ($event->user->email_verified_at === null) {
-                $event->user->forceFill(['email_verified_at' => now()])->save();
-            }
+            $event->user->forceFill([
+                'email_verified_at' => $event->user->email_verified_at ?? now(),
+                'must_change_password' => false,
+            ])->save();
         });
     }
 

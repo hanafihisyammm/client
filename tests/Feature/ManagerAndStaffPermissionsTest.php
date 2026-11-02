@@ -124,8 +124,9 @@ class ManagerAndStaffPermissionsTest extends TestCase
             'email' => 'dana.new@example.com',
             'role' => 'admin',
             'company_id' => $other->id,
+            'password' => 'Temp-Passw0rd-1',
             'project_ids' => [$this->website->id, $this->mobile->id],
-        ])->assertSessionHas('flash.message', 'Staff account created. Invitation sent to dana.new@example.com.');
+        ])->assertSessionHas('flash.message', 'Staff account created for dana.new@example.com. They must change the password when they first log in.');
 
         $dana = User::where('email', 'dana.new@example.com')->firstOrFail();
         $this->assertSame('staff', $dana->role);
@@ -133,7 +134,8 @@ class ManagerAndStaffPermissionsTest extends TestCase
         $this->assertSame('Dana New', $dana->name);
         $this->assertNull($dana->email_verified_at);
         $this->assertEqualsCanonicalizing([$this->website->id, $this->mobile->id], $dana->projectIds()->all());
-        Notification::assertSentTo($dana, UserInvited::class);
+        $this->assertTrue($dana->must_change_password);
+        Notification::assertNotSentTo($dana, UserInvited::class);
 
         $this->actingAs($admin)->patch($base . '/' . $dana->uuid, [
             'name' => 'Dana Lee',

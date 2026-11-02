@@ -9,8 +9,7 @@ use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -21,7 +20,7 @@ use Illuminate\Validation\ValidationException;
 class StaffController extends Controller
 {
     /**
-     * Create a staff login for the company. They receive an email to set their own password.
+     * Create a staff login for the company, with a password they must change when they first log in.
      */
     public function store(Request $request, Company $company)
     {
@@ -30,6 +29,7 @@ class StaffController extends Controller
         $validated = $request->validate([
             'name' => 'nullable|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email',
+            'password' => ['required', 'string', Password::defaults()],
             'project_ids' => 'array',
             'project_ids.*' => 'integer',
         ], [
@@ -39,21 +39,18 @@ class StaffController extends Controller
         $projectIds = $this->validatedProjectIds($company, $validated['project_ids'] ?? []);
 
         // The role and company come from here, never from the request
-        $staff = User::create([
-            'name' => ($validated['name'] ?? null) ?: Str::title(trim(preg_replace('/[._+\-]+/', ' ', Str::before($validated['email'], '@')))),
+        $staff = User::createWithTemporaryPassword([
+            'name' => ($validated['name'] ?? null) ?: User::nameFromEmail($validated['email']),
             'email' => $validated['email'],
-            'password' => Hash::make(Str::random(40)),
             'role' => 'staff',
             'company_id' => $company->id,
             'created_by' => $actor->id,
-            'email_verified_at' => null,
-        ]);
+        ], $validated['password']);
 
         $this->syncProjects($company, $staff, $projectIds, $actor);
-        app(NotificationService::class)->notifyUserInvited($staff, $actor);
 
         return back()->with('flash', [
-            'message' => "Staff account created. Invitation sent to {$staff->email}.",
+            'message' => "Staff account created for {$staff->email}. They must change the password when they first log in.",
             'type' => 'success',
         ]);
     }
@@ -130,6 +127,10 @@ class StaffController extends Controller
 
         if ($user->email_verified_at !== null) {
             return back()->withErrors(['invitation' => 'This person has already set up their account.']);
+        }
+
+        if ($user->must_change_password) {
+            return back()->withErrors(['invitation' => 'This person was given a password, so they do not need an invitation.']);
         }
 
         app(NotificationService::class)->notifyUserInvited($user, $actor);

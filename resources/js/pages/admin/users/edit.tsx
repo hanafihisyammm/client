@@ -144,7 +144,7 @@ export default function Edit({ user, companies }: Props) {
                                 />
                                 <InputError message={errors.password} />
                                 <p className="text-sm text-gray-600">
-                                    Leave blank to keep the current password
+                                    Leave blank to keep the current password. If you set one for someone else, they must change it when they next log in.
                                 </p>
                             </div>
 

@@ -9,6 +9,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Inertia\Inertia;
@@ -58,12 +59,12 @@ class UserController extends Controller
     {
         $this->authorize('create', User::class);
 
-        // Only the email, role and (for staff) company are entered here; the user sets
-        // their own name and password from the invitation email
+        // The user enters their own name and replaces this password when they first log in
         $validated = $request->validate([
             'email' => 'required|string|email|max:255|unique:users',
             'role' => 'required|string|in:admin,manager,staff',
             'company_id' => 'nullable|required_if:role,staff|exists:companies,id',
+            'password' => ['required', 'string', Rules\Password::defaults()],
         ], [
             'email.required' => 'Please enter an email address.',
             'email.email' => 'Please enter a valid email address.',
@@ -77,58 +78,69 @@ class UserController extends Controller
         $currentUser = auth()->user();
         if (!$currentUser->can('createRole', [User::class, $validated['role']])) {
             return back()
-                ->withInput()
                 ->withErrors(['role' => 'You are not authorized to create users with this role.']);
         }
 
         try {
-            // The account stays "Pending" (no verified date, unusable password) until the invitation is accepted
-            $newUser = $this->invite($validated['email'], $validated['role'], $validated['company_id'] ?? null, $currentUser);
+            $newUser = $this->createAccount($validated['email'], $validated['role'], $validated['company_id'] ?? null, $validated['password'], $currentUser);
 
             return redirect()->route('users.index')
                 ->with('flash', [
-                    'message' => "Invitation sent to {$newUser->email}.",
+                    'message' => "Account created for {$newUser->email}.",
                     'type' => 'success'
                 ]);
         } catch (\Exception $e) {
             \Log::error('User creation failed: ' . $e->getMessage());
 
             return back()
-                ->withInput()
                 ->withErrors(['general' => 'An error occurred while creating the user. Please try again.']);
         }
     }
 
     /**
-     * Invite several people at once, each with their own role and, for staff, their own company.
-     * Nothing is created unless every row is usable, so a typo never leaves the list half done.
-     * Addresses that are already registered are skipped and reported back, not treated as an error.
+     * Create several accounts at once, each with its own role, password and, for staff, company.
+     * Nothing is created unless every row is usable, so a typo never leaves the list half done
+     * and the admin never has to work out which of the passwords on screen really took effect.
+     *
+     * Failures return without the submitted input: it holds passwords, and flashed
+     * input is saved in the session store. The page keeps its own copy of the form.
      */
     public function bulkStore(Request $request)
     {
         $this->authorize('create', User::class);
 
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'invites' => 'required|array|min:1|max:' . self::MAX_BULK_INVITES,
             'invites.*.email' => 'required|string|email|max:255',
             'invites.*.role' => 'required|string|in:admin,manager,staff',
             'invites.*.company_id' => 'nullable|required_if:invites.*.role,staff|exists:companies,id',
+            'invites.*.password' => ['required', 'string', Rules\Password::defaults()],
         ], [
             'invites.required' => 'Please add at least one person.',
-            'invites.max' => 'You can invite up to ' . self::MAX_BULK_INVITES . ' people at a time.',
+            'invites.max' => 'You can add up to ' . self::MAX_BULK_INVITES . ' people at a time.',
             'invites.*.email.required' => 'Please enter an email address.',
             'invites.*.email.email' => 'Please enter a valid email address.',
             'invites.*.role.required' => 'Please select a role.',
             'invites.*.role.in' => 'Please select a valid role.',
             'invites.*.company_id.required_if' => 'Please choose the client company for this staff member.',
+            'invites.*.password.required' => 'Please set a password.',
         ]);
 
+        if ($validator->fails()) {
+            return back()->withErrors($validator);
+        }
+
         $currentUser = auth()->user();
-        $invites = collect($validated['invites'])->map(fn (array $invite) => [
+        $invites = collect($validator->validated()['invites'])->map(fn (array $invite) => [
             'email' => Str::lower(trim($invite['email'])),
             'role' => $invite['role'],
             'company_id' => $invite['company_id'] ?? null,
+            'password' => $invite['password'],
         ]);
+
+        $alreadyRegistered = User::whereIn(DB::raw('lower(email)'), $invites->pluck('email')->all())
+            ->pluck('email')
+            ->map(fn ($email) => Str::lower($email));
 
         // Row-by-row checks that validation rules cannot express
         $errors = [];
@@ -136,6 +148,8 @@ class UserController extends Controller
         foreach ($invites as $index => $invite) {
             if (isset($seen[$invite['email']])) {
                 $errors["invites.{$index}.email"] = 'This address is listed more than once.';
+            } elseif ($alreadyRegistered->contains($invite['email'])) {
+                $errors["invites.{$index}.email"] = 'This email address is already registered.';
             }
             $seen[$invite['email']] = true;
 
@@ -145,35 +159,21 @@ class UserController extends Controller
         }
 
         if ($errors) {
-            return back()->withInput()->withErrors($errors);
+            return back()->withErrors($errors);
         }
 
-        $alreadyRegistered = User::whereIn(DB::raw('lower(email)'), $invites->pluck('email')->all())
-            ->pluck('email')
-            ->map(fn ($email) => Str::lower($email));
-        $toInvite = $invites->reject(fn (array $invite) => $alreadyRegistered->contains($invite['email']))->values();
-
-        if ($toInvite->isEmpty()) {
-            return back()->withInput()->withErrors([
-                'invites' => $invites->count() === 1 ? 'This email address is already registered.' : 'All of these email addresses are already registered.',
-            ]);
-        }
-
-        DB::transaction(function () use ($toInvite, $currentUser) {
-            foreach ($toInvite as $invite) {
-                $this->invite($invite['email'], $invite['role'], $invite['company_id'], $currentUser);
+        DB::transaction(function () use ($invites, $currentUser) {
+            foreach ($invites as $invite) {
+                $this->createAccount($invite['email'], $invite['role'], $invite['company_id'], $invite['password'], $currentUser);
             }
         });
 
-        $message = $toInvite->count() === 1
-            ? "Invitation sent to {$toInvite->first()['email']}."
-            : "{$toInvite->count()} invitations sent.";
+        $message = $invites->count() === 1
+            ? "Account created for {$invites->first()['email']}."
+            : "{$invites->count()} accounts created.";
 
-        if ($alreadyRegistered->isNotEmpty()) {
-            $message .= " Skipped {$alreadyRegistered->count()} already registered: " . $alreadyRegistered->implode(', ') . '.';
-        }
-
-        return redirect()->route('users.index')->with('flash', ['message' => $message, 'type' => 'success']);
+        // Back to the form, which then lists the new logins so they can be copied and passed on
+        return redirect()->route('users.create')->with('flash', ['message' => $message, 'type' => 'success']);
     }
 
     /**
@@ -196,7 +196,7 @@ class UserController extends Controller
         $selected = User::whereIn('id', $validated['user_ids'])->get();
 
         $pending = $selected->filter(
-            fn (User $user) => $user->email_verified_at === null && $user->isActive() && $actor->can('update', $user)
+            fn (User $user) => $user->email_verified_at === null && !$user->must_change_password && $user->isActive() && $actor->can('update', $user)
         );
 
         if ($pending->isEmpty()) {
@@ -220,25 +220,18 @@ class UserController extends Controller
     }
 
     /**
-     * Create a pending account and email its invitation.
+     * Create an account with a password its owner must change when they first log in.
      */
-    private function invite(string $email, string $role, $companyId, User $invitedBy): User
+    private function createAccount(string $email, string $role, $companyId, string $password, User $createdBy): User
     {
-        $newUser = User::create([
-            // Placeholder name from the email ("jane.tan@..." becomes "Jane Tan") until the user enters their own
-            'name' => Str::title(trim(preg_replace('/[._+\-]+/', ' ', Str::before($email, '@')))),
+        return User::createWithTemporaryPassword([
+            'name' => User::nameFromEmail($email),
             'email' => $email,
-            'password' => Hash::make(Str::random(40)),
             'role' => $role,
             // Only staff are placed in a company here; a manager is put in charge of one from the Clients page
             'company_id' => $role === 'staff' ? $companyId : null,
-            'created_by' => $invitedBy->id,
-            'email_verified_at' => null,
-        ]);
-
-        app(NotificationService::class)->notifyUserInvited($newUser, $invitedBy);
-
-        return $newUser;
+            'created_by' => $createdBy->id,
+        ], $password);
     }
 
     /**
@@ -250,6 +243,10 @@ class UserController extends Controller
 
         if ($user->email_verified_at !== null) {
             return back()->withErrors(['invitation' => 'This user has already set up their account.']);
+        }
+
+        if ($user->must_change_password) {
+            return back()->withErrors(['invitation' => 'This user was given a password, so they do not need an invitation.']);
         }
 
         app(NotificationService::class)->notifyUserInvited($user, auth()->user());
@@ -310,6 +307,11 @@ class UserController extends Controller
 
         if ($request->filled('password')) {
             $data['password'] = Hash::make($request->password);
+
+            // A password someone else chose is only temporary; your own is yours to keep
+            if ($user->id !== auth()->id()) {
+                $user->must_change_password = true;
+            }
         }
 
         $message = 'User updated successfully.';
