@@ -44,6 +44,7 @@
 - [ ] **Set QUEUE_CONNECTION=redis** in production
 - [ ] **Configure queue workers** with supervisor
 - [ ] **Set up queue monitoring**
+- [ ] **Run the scheduler every minute** with cron: `* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1` (closes resolved issues nobody reviewed after 7 days, prunes old logins)
 - [ ] **Test email notifications** are working
 
 ### ✅ 6. Logging & Monitoring

@@ -69,6 +69,7 @@ interface Report {
   activityLogs?: ActivityLog[]
   resolution_summary?: string
   resolved_by?: number | null
+  resolved_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -96,13 +97,14 @@ interface ActivityLog {
   action: string
   old_values?: Record<string, unknown> | null
   new_values?: Record<string, unknown> | null
-  user: { id: number; name: string; email: string; role?: string }
+  // None when the app did it itself, such as closing an issue nobody reviewed
+  user: { id: number; name: string; email: string; role?: string } | null
   created_at: string
 }
 
 interface TimelineEntry {
   key: string
-  user: { name: string; role?: string }
+  user: { name: string; role?: string } | null
   created_at: string
   summary: string
   details: string[]
@@ -147,6 +149,9 @@ const formatFieldValue = (field: string, value: unknown) => {
 }
 
 // Turn one activity record into a sentence, the changes it made, and any note left with it
+// Matches Report::AUTO_CLOSE_AFTER_DAYS on the server
+const AUTO_CLOSE_AFTER_DAYS = 7
+
 const describeLog = (log: ActivityLog): Pick<TimelineEntry, 'summary' | 'details' | 'quote'> => {
   const oldValues = log.old_values ?? {}
   const newValues = log.new_values ?? {}
@@ -156,6 +161,9 @@ const describeLog = (log: ActivityLog): Pick<TimelineEntry, 'summary' | 'details
 
   switch (log.action) {
     case 'status_changed':
+      if (newValues.auto_closed) {
+        return { summary: `Closed automatically: nobody reviewed the fix within ${AUTO_CLOSE_AFTER_DAYS} days`, details: transition }
+      }
       return {
         summary: STATUS_SUMMARIES[String(newValues.status)] ?? 'Changed the status',
         details: transition,
@@ -371,6 +379,10 @@ export default function ReportShow() {
   // Whoever resolved the issue cannot confirm their own fix.
   const awaitingReview = report.status === 'resolved'
   const canConfirmFix = abilities.confirm
+  // When a resolved issue closes by itself if nobody reviews it (the server checks hourly)
+  const autoCloseOn = awaitingReview
+    ? new Date(new Date(report.resolved_at ?? report.updated_at).getTime() + AUTO_CLOSE_AFTER_DAYS * 86400000).toISOString()
+    : null
   const resolvedByMe = awaitingReview && Number(report.resolved_by) === Number(userId)
   const canClose = abilities.close
   // On a resolved issue "Not Fixed" sits in the review banner; show the plain button otherwise
@@ -742,6 +754,7 @@ export default function ReportShow() {
                 <h2 className="text-base font-semibold text-purple-900">This issue has been resolved</h2>
                 <p className="mt-1 text-sm text-purple-800">
                   Please review and confirm whether the issue is fixed.
+                  {autoCloseOn && ` If nobody does, it will close automatically on ${formatDate(autoCloseOn)}.`}
                 </p>
                 {report.resolution_summary && (
                   <p className="mt-2 text-sm text-purple-900">
@@ -769,6 +782,7 @@ export default function ReportShow() {
             {resolvedByMe
               ? 'You resolved this issue, so someone else has to confirm the fix: the person who reported it, or the manager.'
               : 'Resolved and waiting for review. It will be closed once the reporter or the manager confirms the fix.'}
+            {autoCloseOn && ` If nobody reviews it, it will close automatically on ${formatDate(autoCloseOn)}.`}
           </div>
         )}
 
@@ -1367,7 +1381,7 @@ export default function ReportShow() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-gray-900">
-                        <span className="font-medium">{entry.user?.name ?? 'Unknown user'}</span>
+                        <span className="font-medium">{entry.user?.name ?? 'System'}</span>
                       </p>
                       <p className="mt-0.5 font-medium text-gray-700">{entry.summary}</p>
                       {entry.details.length > 0 && (

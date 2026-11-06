@@ -13,7 +13,8 @@ class ReportStatusChanged extends AppNotification
      */
     public function __construct(
         public Report $report,
-        public User $updatedBy,
+        // Nobody when the issue was closed automatically
+        public ?User $updatedBy,
         public string $oldStatus,
         public string $newStatus,
         public ?string $reason = null
@@ -30,10 +31,15 @@ class ReportStatusChanged extends AppNotification
     private function wording(object $notifiable): array
     {
         $title = $this->report->title;
-        $actor = $this->updatedBy->name;
+
+        if ($this->updatedBy === null && $this->newStatus === Report::STATUS_CLOSED) {
+            return $this->standardWording('Nobody confirmed or reopened the fix within ' . Report::AUTO_CLOSE_AFTER_DAYS . ' days, so the issue was closed automatically.');
+        }
+
+        $actor = $this->updatedBy?->name ?? 'System';
         // The reporter and the company's manager are the ones who confirm or reject a fix
         $canConfirm = $notifiable instanceof User && $this->canConfirm($notifiable);
-        $byReviewer = $this->canConfirm($this->updatedBy) || $this->updatedBy->isAdmin();
+        $byReviewer = $this->updatedBy !== null && ($this->canConfirm($this->updatedBy) || $this->updatedBy->isAdmin());
 
         if ($this->newStatus === Report::STATUS_RESOLVED && $canConfirm) {
             return [
@@ -106,8 +112,8 @@ class ReportStatusChanged extends AppNotification
             'report_id' => $this->report->id,
             'report_title' => $this->report->title,
             'project_name' => $this->report->project?->name,
-            'updated_by' => $this->updatedBy->name,
-            'updated_by_role' => $this->updatedBy->role,
+            'updated_by' => $this->updatedBy?->name ?? 'System',
+            'updated_by_role' => $this->updatedBy?->role,
             'old_status' => $this->oldStatus,
             'new_status' => $this->newStatus,
             'reason' => $this->reason,
