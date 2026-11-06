@@ -263,6 +263,7 @@ class ReportController extends Controller
             $needed = match ($action) {
                 'update_report' => 'edit',
                 'add_comment', 'add_attachments' => 'comment',
+                'edit_comment', 'delete_comment' => 'manage_comments',
                 default => null,
             };
         }
@@ -582,6 +583,43 @@ class ReportController extends Controller
                 app(NotificationService::class)->notifyCommentAdded($report, $comment, $user);
 
                 $message = 'Comment added successfully.';
+                break;
+
+            case 'edit_comment':
+                $validated = $request->validate([
+                    'comment_id' => 'required|integer',
+                    'comment' => 'nullable|string|max:2000',
+                ]);
+
+                $comment = $report->comments()->findOrFail($validated['comment_id']);
+                $text = trim($validated['comment'] ?? '');
+
+                // Text may only be cleared when the comment still has files to show
+                if ($text === '' && !$comment->attachments()->exists()) {
+                    return response()->json([
+                        'message' => 'The comment cannot be empty.',
+                        'errors' => ['comment' => ['The comment cannot be empty.']],
+                    ], 422);
+                }
+
+                $comment->update(['comment' => $text]);
+
+                $message = 'Comment updated successfully.';
+                break;
+
+            case 'delete_comment':
+                $validated = $request->validate([
+                    'comment_id' => 'required|integer',
+                ]);
+
+                $comment = $report->comments()->with('attachments')->findOrFail($validated['comment_id']);
+                $paths = $comment->attachments->pluck('storage_path')->all();
+
+                // Its attachment rows go with it (cascade); the files are removed once that has happened
+                $comment->delete();
+                Storage::disk('public')->delete($paths);
+
+                $message = 'Comment deleted successfully.';
                 break;
 
             case 'add_attachments':

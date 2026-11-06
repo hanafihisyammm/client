@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, FileImage, FileVideo, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, Pencil, FileSpreadsheet } from 'lucide-react'
+import { ArrowLeft, FileImage, FileVideo, Calendar, MessageCircle, CheckCircle2, File, ExternalLink, Plus, RotateCcw, AlertCircle, Send, X, AlertTriangle, ArrowUpRight, Info, Paperclip, Link2, Timer, Tag, Bug, Sparkles, Play, ChevronLeft, ChevronRight, Download, Upload, Loader2, ImagePlus, Pencil, FileSpreadsheet, Trash2 } from 'lucide-react'
 import { DatePicker } from '@/components/ui/date-picker'
 import { PageUrlFields, checkPageUrls } from '@/components/page-url-fields'
 import AppLayout from '@/layouts/app-layout'
@@ -63,6 +63,7 @@ interface Report {
     comment: string
     user: { id: number; name: string; email: string; role: string }
     created_at: string
+    updated_at?: string
     // Images posted with the comment
     attachments?: Attachment[]
   }>
@@ -233,7 +234,7 @@ interface PageProps extends Record<string, unknown> {
 
 /** What the server says this user may do with the issue right now. */
 type Abilities = Record<
-  'view' | 'start_progress' | 'resolve' | 'reopen_work' | 'confirm' | 'close' | 'reopen' | 'edit' | 'comment' | 'delete',
+  'view' | 'start_progress' | 'resolve' | 'reopen_work' | 'confirm' | 'close' | 'reopen' | 'edit' | 'comment' | 'manage_comments' | 'delete',
   boolean
 >
 
@@ -302,6 +303,9 @@ export default function ReportShow() {
   const [report, setReport] = useState<Report>(initialReport)
   const [loading, setLoading] = useState(false)
   const [newComment, setNewComment] = useState('')
+  // The comment an admin is editing, and the one waiting for confirmation to delete
+  const [editingComment, setEditingComment] = useState<{ id: number; text: string } | null>(null)
+  const [commentToDelete, setCommentToDelete] = useState<number | null>(null)
   // Images waiting to be posted with the comment, each with a preview URL
   // Images get a preview URL; spreadsheets have none
   const [commentImages, setCommentImages] = useState<Array<{ file: File; preview: string | null }>>([])
@@ -377,6 +381,7 @@ export default function ReportShow() {
   const canReopen = abilities.reopen && !(awaitingReview && canConfirmFix)
   const canEdit = abilities.edit
   const canComment = abilities.comment
+  const canManageComments = abilities.manage_comments
 
   // Check the page URLs here first; blank rows are dropped so the rows match any server errors
   const saveEdit = () => {
@@ -426,6 +431,8 @@ export default function ReportShow() {
         setReopenReason('')
         setEditData(editDataFor(result.report))
         setEditErrors({})
+        setEditingComment(null)
+        setCommentToDelete(null)
       } else {
         if (action === 'update_report' && result.errors) setEditErrors(result.errors)
         flashError(result.message || 'Action failed')
@@ -1173,8 +1180,53 @@ export default function ReportShow() {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-sm text-gray-900">{comment.user.name}</span>
                             <span className="text-xs text-gray-400">{timeAgo(comment.created_at)}</span>
+                            {comment.updated_at && comment.updated_at !== comment.created_at && (
+                              <span className="text-xs text-gray-400">(edited)</span>
+                            )}
+                            {canManageComments && editingComment?.id !== comment.id && (
+                              <div className="ml-auto flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingComment({ id: comment.id, text: comment.comment })}
+                                  className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-white transition-colors"
+                                  title="Edit comment"
+                                  aria-label="Edit comment"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCommentToDelete(comment.id)}
+                                  className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-white transition-colors"
+                                  title="Delete comment"
+                                  aria-label="Delete comment"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
                           </div>
-                          {comment.comment && (
+                          {editingComment?.id === comment.id ? (
+                            <div className="space-y-2">
+                              <Textarea
+                                value={editingComment.text}
+                                onChange={(e) => setEditingComment({ id: comment.id, text: e.target.value })}
+                                rows={3}
+                                maxLength={2000}
+                                autoFocus
+                              />
+                              <div className="flex gap-2 justify-end">
+                                <Button size="sm" variant="outline" onClick={() => setEditingComment(null)} disabled={loading}>Cancel</Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleAction('edit_comment', { comment_id: comment.id, comment: editingComment.text })}
+                                  disabled={loading || (!editingComment.text.trim() && !comment.attachments?.length)}
+                                >
+                                  {loading ? 'Saving...' : 'Save'}
+                                </Button>
+                              </div>
+                            </div>
+                          ) : comment.comment && (
                             <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.comment}</p>
                           )}
                           {comment.attachments && comment.attachments.some(isImageAttachment) && (
@@ -1441,6 +1493,22 @@ export default function ReportShow() {
                   {loading ? 'Reopening...' : 'Reopen Issue'}
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Comment Modal */}
+      {commentToDelete !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-2">Delete Comment</h3>
+            <p className="text-sm text-gray-600 mb-4">This comment and any files posted with it will be removed. This cannot be undone.</p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setCommentToDelete(null)} disabled={loading}>Cancel</Button>
+              <Button onClick={() => handleAction('delete_comment', { comment_id: commentToDelete })} disabled={loading} variant="destructive">
+                {loading ? 'Deleting...' : 'Delete Comment'}
+              </Button>
             </div>
           </div>
         </div>

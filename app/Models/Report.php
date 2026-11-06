@@ -313,7 +313,7 @@ class Report extends Model
     {
         if (!$this->isVisibleTo($user)) {
             return array_fill_keys(
-                ['view', 'start_progress', 'resolve', 'reopen_work', 'confirm', 'close', 'reopen', 'edit', 'comment', 'delete'],
+                ['view', 'start_progress', 'resolve', 'reopen_work', 'confirm', 'close', 'reopen', 'edit', 'comment', 'manage_comments', 'delete'],
                 false
             );
         }
@@ -339,6 +339,8 @@ class Report extends Model
             'reopen' => in_array($this->status, [self::STATUS_RESOLVED, self::STATUS_CLOSED], true) && $canDecide,
             'edit' => $isAdmin || $isManager || ($isReporter && $this->status === self::STATUS_OPEN),
             'comment' => true,
+            // Editing or deleting anyone's comment is for admins only
+            'manage_comments' => $isAdmin,
             'delete' => $isAdmin || $isManager || ($isReporter && $this->status === self::STATUS_OPEN),
         ];
     }
