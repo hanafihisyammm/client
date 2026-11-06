@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class Report extends Model
@@ -53,6 +54,11 @@ class Report extends Model
      * Resolved is not final: it is waiting for the client to review and confirm.
      */
     public const FINISHED_STATUSES = [self::STATUS_RESOLVED, self::STATUS_CLOSED];
+
+    /**
+     * Days a resolved issue waits for someone to confirm or reopen it before it is closed automatically.
+     */
+    public const AUTO_CLOSE_AFTER_DAYS = 7;
 
     /**
      * Left over from when issues had an assignee; kept in the database but never sent to
@@ -518,6 +524,51 @@ class Report extends Model
         return $query->whereNotNull('due_date')
             ->whereDate('due_date', '<', self::businessToday())
             ->whereNotIn('status', self::FINISHED_STATUSES);
+    }
+
+    /**
+     * Resolved issues nobody has confirmed or reopened within the review period.
+     * Issues resolved before resolved_at was recorded fall back to their last update.
+     */
+    public function scopeDueForAutoClose($query)
+    {
+        return $query->where('status', self::STATUS_RESOLVED)
+            ->whereRaw('COALESCE(resolved_at, updated_at) <= ?', [now()->subDays(self::AUTO_CLOSE_AFTER_DAYS)]);
+    }
+
+    /**
+     * Close a resolved issue that nobody reviewed in time. Nobody did it, so the activity
+     * entry and the notification have no user. Returns false if it is no longer resolved.
+     */
+    public function autoClose(): bool
+    {
+        $closed = DB::transaction(function () {
+            // Someone may have confirmed or reopened it since it was picked
+            $current = static::whereKey($this->id)->lockForUpdate()->first();
+            if (!$current || $current->status !== self::STATUS_RESOLVED) {
+                return false;
+            }
+
+            $closedAt = now();
+            $this->setRawAttributes($current->getAttributes(), true);
+            $this->update(['status' => self::STATUS_CLOSED, 'closed_at' => $closedAt]);
+
+            ReportActivityLog::create([
+                'report_id' => $this->id,
+                'user_id' => null,
+                'action' => 'status_changed',
+                'old_values' => ['status' => self::STATUS_RESOLVED, 'closed_at' => null],
+                'new_values' => ['status' => self::STATUS_CLOSED, 'closed_at' => $closedAt, 'auto_closed' => true],
+            ]);
+
+            return true;
+        });
+
+        if ($closed) {
+            app(NotificationService::class)->notifyReportStatusChanged($this, null, self::STATUS_RESOLVED, self::STATUS_CLOSED);
+        }
+
+        return $closed;
     }
 
     public function isOverdue(): bool

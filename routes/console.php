@@ -13,3 +13,6 @@ Artisan::command('inspire', function () {
 // Remembered browsers that have not been used for the idle period (they are refused anyway)
 // and alert subscriptions of browsers that stopped opening the app
 Schedule::command('model:prune', ['--model' => [PersistentLogin::class, PushSubscription::class]])->daily();
+
+// Resolved issues nobody confirmed or reopened within the review period
+Schedule::command('desk:auto-close')->hourly();

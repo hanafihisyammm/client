@@ -71,9 +71,9 @@ class NotificationService
     }
 
     /**
-     * Notify relevant users when a report status changes.
+     * Notify relevant users when a report status changes. No user means it changed on its own (auto-close).
      */
-    public function notifyReportStatusChanged(Report $report, User $updatedBy, string $oldStatus, string $newStatus, ?string $reason = null): void
+    public function notifyReportStatusChanged(Report $report, ?User $updatedBy, string $oldStatus, string $newStatus, ?string $reason = null): void
     {
         $report->load('project');
 
@@ -138,13 +138,13 @@ class NotificationService
      * super admins, the manager of the project's company, and the staff assigned to
      * the project. Deactivated people are never notified.
      */
-    private function getProjectRecipients(?Project $project, User $actor, array $alsoNotifyIds = []): Collection
+    private function getProjectRecipients(?Project $project, ?User $actor, array $alsoNotifyIds = []): Collection
     {
         $projectId = $project?->id;
         $companyId = $project?->company_id;
         $alsoNotifyIds = array_values(array_filter($alsoNotifyIds));
 
-        return User::where('id', '!=', $actor->id)
+        return User::when($actor, fn ($query) => $query->where('id', '!=', $actor->id))
             ->whereNull('deactivated_at')
             ->where(function ($query) use ($projectId, $companyId, $alsoNotifyIds) {
                 $query->whereIn('role', ['admin', 'super_admin'])
@@ -168,7 +168,7 @@ class NotificationService
      * Everyone involved in a report except the person who acted:
      * the project's audience plus the reporter.
      */
-    private function getReportRecipients(Report $report, User $actor): Collection
+    private function getReportRecipients(Report $report, ?User $actor): Collection
     {
         return $this->getProjectRecipients($report->project, $actor, [$report->reported_by]);
     }
